@@ -1,11 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
+import { Button } from "@/components/ui/button";
 
-type Topic = { id: number; name: string; type: string };
+export type InterestTopic = { id: number; name: string; type: string };
 
-export function InterestPicker({ topics, initial }: { topics: Topic[]; initial: number[] }) {
+export function InterestPicker({ topics, initial }: { topics: InterestTopic[]; initial: number[] }) {
   const [selected, setSelected] = useState(new Set(initial));
   const [message, setMessage] = useState("");
   function toggle(id: number) {
@@ -19,5 +19,5 @@ export function InterestPicker({ topics, initial }: { topics: Topic[]; initial: 
     const response = await fetch("/api/interests", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ topicIds: [...selected] }) });
     setMessage(response.ok ? "Gustos guardados" : "No pudimos guardar tus gustos");
   }
-  return <main className="interest-page"><div className="interest-header"><span>PERSONALIZA TU RADAR</span><h1>¿Qué te mueve?</h1><p>El agente priorizará estas señales al buscar eventos en Chile.</p></div><div className="interest-grid">{topics.map((topic) => <button key={topic.id} onClick={() => toggle(topic.id)} className={selected.has(topic.id) ? "selected" : ""}><small>{topic.type}</small><b>{topic.name}</b><i>{selected.has(topic.id) ? "✓" : "+"}</i></button>)}</div><div className="interest-actions"><Link href="/">Cancelar</Link><span>{message}</span><button onClick={save}>Guardar selección</button></div></main>;
+  return <div><div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{topics.map((topic) => <Button key={topic.id} onClick={() => toggle(topic.id)} variant={selected.has(topic.id) ? "default" : "outline"} className="h-auto min-h-16 whitespace-normal px-3 py-3 text-left">{selected.has(topic.id) ? "✓ " : "+ "}{topic.name}</Button>)}</div><div className="mt-5 flex items-center justify-between gap-4"><span className="text-sm text-zinc-400" role="status">{message}</span><Button onClick={save}>Guardar selección</Button></div></div>;
 }

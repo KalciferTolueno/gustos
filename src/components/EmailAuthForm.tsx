@@ -1,9 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { signIn } from "next-auth/react";
-import { ArrowLeft, AtSign, LockKeyhole, UserRound } from "lucide-react";
+import { AtSign, LockKeyhole, UserRound } from "lucide-react";
 
 export function EmailAuthForm({ google, discord }: { google: boolean; discord: boolean }) {
   const [mode, setMode] = useState<"login" | "register">("login");
@@ -30,12 +29,12 @@ export function EmailAuthForm({ google, discord }: { google: boolean; discord: b
         }
       }
 
-      const result = await signIn("credentials", { email, password, redirect: false, callbackUrl: "/gustos" });
+      const result = await signIn("credentials", { email, password, redirect: false, callbackUrl: "/" });
       if (result.error) {
         setError("Correo o contraseña incorrectos.");
         return;
       }
-      window.location.href = result.url ?? "/gustos";
+      window.location.href = result.url ?? "/";
     } catch {
       setError("No pudimos conectar con el servidor. Intenta nuevamente.");
     } finally {
@@ -44,12 +43,7 @@ export function EmailAuthForm({ google, discord }: { google: boolean; discord: b
   }
 
   return (
-    <main className="login-page">
-      <section className="login-pitch">
-        <Link href="/" className="back-link"><ArrowLeft size={16} /> Volver</Link>
-        <div><span>TU RADAR PERSONAL</span><h1>Los eventos<br />te encuentran<br /><em>a ti.</em></h1><p>Guarda tus gustos, ciudad y calendario en todos tus dispositivos.</p></div>
-      </section>
-      <section className="login-panel">
+      <section className="login-panel embedded-login">
         <div className="auth-tabs"><button className={mode === "login" ? "selected" : ""} onClick={() => { setMode("login"); setError(""); }}>Entrar</button><button className={mode === "register" ? "selected" : ""} onClick={() => { setMode("register"); setError(""); }}>Crear cuenta</button></div>
         <div className="auth-heading"><span>{mode === "login" ? "BIENVENIDO DE VUELTA" : "ÚNETE A GUSTOS"}</span><h2>{mode === "login" ? "Inicia sesión" : "Crea tu cuenta"}</h2></div>
         <form action={submit} className="auth-form">
@@ -60,8 +54,7 @@ export function EmailAuthForm({ google, discord }: { google: boolean; discord: b
           {error && <div className="form-error">{error}</div>}
           <button disabled={loading}>{loading ? "Procesando..." : mode === "login" ? "Entrar" : "Crear cuenta"}</button>
         </form>
-        {(google || discord) && <><div className="auth-divider"><span>o continúa con</span></div><div className="social-login">{google && <button onClick={() => signIn("google", { callbackUrl: "/gustos" })}>Google</button>}{discord && <button onClick={() => signIn("discord", { callbackUrl: "/gustos" })}>Discord</button>}</div></>}
+        {(google || discord) && <><div className="auth-divider"><span>o continúa con</span></div><div className="social-login">{google && <button onClick={() => signIn("google", { callbackUrl: "/" })}>Google</button>}{discord && <button onClick={() => signIn("discord", { callbackUrl: "/" })}>Discord</button>}</div></>}
       </section>
-    </main>
   );
 }

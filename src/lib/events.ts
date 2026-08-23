@@ -20,6 +20,7 @@ export type EventCard = Pick<
   | "confidence"
   | "sourceName"
   | "sourceUrl"
+  | "imageUrl"
   | "priceLabel"
   | "discoveredByAi"
 > & { topicNames: string[] };
@@ -41,6 +42,7 @@ const demoEvents: EventCard[] = [
     confidence: 100,
     sourceName: "Datos de demostracion",
     sourceUrl: "",
+    imageUrl: "https://images.unsplash.com/photo-1524368535928-5b5e00ddc76b?auto=format&fit=crop&w=900&q=80",
     priceLabel: "$12.000",
     discoveredByAi: false,
     topicNames: ["Techno", "Musica electronica"],
@@ -61,6 +63,7 @@ const demoEvents: EventCard[] = [
     confidence: 100,
     sourceName: "Datos de demostracion",
     sourceUrl: "",
+    imageUrl: "https://images.unsplash.com/photo-1549490349-8643362247b5?auto=format&fit=crop&w=900&q=80",
     priceLabel: "Gratis",
     discoveredByAi: false,
     topicNames: ["Evangelion", "Anime"],
@@ -81,6 +84,7 @@ const demoEvents: EventCard[] = [
     confidence: 100,
     sourceName: "Datos de demostracion",
     sourceUrl: "",
+    imageUrl: "https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&w=900&q=80",
     priceLabel: "Gratis",
     discoveredByAi: false,
     topicNames: ["Valorant", "Gaming"],
@@ -101,6 +105,7 @@ const demoEvents: EventCard[] = [
     confidence: 100,
     sourceName: "Datos de demostracion",
     sourceUrl: "",
+    imageUrl: "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&w=900&q=80",
     priceLabel: "Gratis",
     discoveredByAi: false,
     topicNames: ["Hatsune Miku", "Anime"],
@@ -149,6 +154,7 @@ export async function saveCandidate(candidate: {
   topicNames: string[];
   sourceName: string;
   sourceUrl: string;
+  imageUrl?: string | null;
   confidence: number;
 }) {
   const db = getDb();

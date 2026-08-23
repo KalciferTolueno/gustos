@@ -16,6 +16,8 @@ npm run dev
 
 Sin `DATABASE_URL`, la interfaz funciona con eventos ficticios claramente identificados. El agente nunca funciona sin PostgreSQL y `OPENAI_API_KEY`.
 
+La búsqueda de portada filtra primero los eventos guardados. Si no encuentra coincidencias, el botón `Buscar` puede ejecutar hasta `AGENT_SEARCHES_PER_QUERY` búsquedas web y guardar solo eventos futuros con una fuente verificable. Las consultas invitadas están limitadas por IP para controlar costos y abuso.
+
 ## EasyPanel
 
 ### Opción recomendada: Compose
