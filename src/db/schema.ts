@@ -93,6 +93,7 @@ export const events = pgTable(
   {
     id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
     externalKey: text("external_key").notNull(),
+    identityKey: text("identity_key"),
     title: text("title").notNull(),
     description: text("description").notNull().default(""),
     startsAt: timestamp("starts_at", { mode: "date", withTimezone: true }).notNull(),
@@ -106,6 +107,8 @@ export const events = pgTable(
     locationPrecision: text("location_precision").notNull().default("city"),
     modality: text("modality").notNull().default("in_person"),
     status: text("status").notNull().default("pending"),
+    eventState: text("event_state").notNull().default("scheduled"),
+    statusReason: text("status_reason"),
     confidence: integer("confidence").notNull().default(0),
     sourceName: text("source_name").notNull(),
     sourceUrl: text("source_url").notNull(),
@@ -119,6 +122,7 @@ export const events = pgTable(
   },
   (table) => [
     uniqueIndex("events_external_key_idx").on(table.externalKey),
+    uniqueIndex("events_identity_key_idx").on(table.identityKey),
     index("events_starts_at_idx").on(table.startsAt),
     index("events_city_idx").on(table.city),
     index("events_status_idx").on(table.status),
@@ -141,8 +145,75 @@ export const agentRuns = pgTable("agent_runs", {
   candidates: integer("candidates").notNull().default(0),
   published: integer("published").notNull().default(0),
   error: text("error"),
+  kind: text("kind").notNull().default("discovery"),
+  target: text("target"),
   startedAt: timestamp("started_at", { mode: "date", withTimezone: true }).notNull().defaultNow(),
   finishedAt: timestamp("finished_at", { mode: "date", withTimezone: true }),
 });
+
+export const discoveryQueries = pgTable(
+  "discovery_queries",
+  {
+    id: serial("id").primaryKey(),
+    normalizedQuery: text("normalized_query").notNull().unique(),
+    displayQuery: text("display_query").notNull(),
+    kind: text("kind").notNull().default("user"),
+    requestCount: integer("request_count").notNull().default(0),
+    status: text("status").notNull().default("queued"),
+    lastRequestedAt: timestamp("last_requested_at", { mode: "date", withTimezone: true }),
+    lastRefreshedAt: timestamp("last_refreshed_at", { mode: "date", withTimezone: true }),
+    nextRefreshAt: timestamp("next_refresh_at", { mode: "date", withTimezone: true }).notNull().defaultNow(),
+    lastResultCount: integer("last_result_count").notNull().default(0),
+    lastError: text("last_error"),
+    createdAt: timestamp("created_at", { mode: "date", withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("discovery_queries_refresh_idx").on(table.nextRefreshAt), index("discovery_queries_kind_idx").on(table.kind)],
+);
+
+export const discoveryQueryEvents = pgTable(
+  "discovery_query_events",
+  {
+    queryId: integer("query_id").notNull().references(() => discoveryQueries.id, { onDelete: "cascade" }),
+    eventId: text("event_id").notNull().references(() => events.id, { onDelete: "cascade" }),
+  },
+  (table) => [primaryKey({ columns: [table.queryId, table.eventId] })],
+);
+
+export const eventSources = pgTable(
+  "event_sources",
+  {
+    id: serial("id").primaryKey(),
+    eventId: text("event_id").notNull().references(() => events.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    url: text("url").notNull(),
+    normalizedUrl: text("normalized_url").notNull(),
+    isPrimary: boolean("is_primary").notNull().default(false),
+    status: text("status").notNull().default("active"),
+    firstSeenAt: timestamp("first_seen_at", { mode: "date", withTimezone: true }).notNull().defaultNow(),
+    lastCheckedAt: timestamp("last_checked_at", { mode: "date", withTimezone: true }),
+    nextCheckAt: timestamp("next_check_at", { mode: "date", withTimezone: true }).notNull().defaultNow(),
+    lastHttpStatus: integer("last_http_status"),
+    contentHash: text("content_hash"),
+  },
+  (table) => [uniqueIndex("event_sources_event_url_idx").on(table.eventId, table.normalizedUrl), index("event_sources_check_idx").on(table.nextCheckAt)],
+);
+
+export const eventSourceObservations = pgTable(
+  "event_source_observations",
+  {
+    id: serial("id").primaryKey(),
+    eventSourceId: integer("event_source_id").notNull().references(() => eventSources.id, { onDelete: "cascade" }),
+    observedTitle: text("observed_title"),
+    observedStartsAt: timestamp("observed_starts_at", { mode: "date", withTimezone: true }),
+    observedEndsAt: timestamp("observed_ends_at", { mode: "date", withTimezone: true }),
+    observedVenue: text("observed_venue"),
+    observedState: text("observed_state").notNull().default("scheduled"),
+    confidence: integer("confidence").notNull().default(0),
+    isOfficial: boolean("is_official").notNull().default(false),
+    evidence: text("evidence"),
+    checkedAt: timestamp("checked_at", { mode: "date", withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("event_source_observations_source_idx").on(table.eventSourceId, table.checkedAt)],
+);
 
 export type EventRow = typeof events.$inferSelect;

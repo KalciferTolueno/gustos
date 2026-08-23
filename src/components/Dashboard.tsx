@@ -9,6 +9,7 @@ import {
   Check,
   Compass,
   ExternalLink,
+  Clock3,
   Heart,
   Layers3,
   ListFilter,
@@ -40,6 +41,7 @@ const EventMap = dynamic(() => import("./EventMap").then((module) => module.Even
 
 const dateFormatter = new Intl.DateTimeFormat("es-CL", { day: "numeric", month: "short" });
 const fullDateFormatter = new Intl.DateTimeFormat("es-CL", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+const eventStateLabels: Record<string, string> = { scheduled: "Programado", postponed: "Postergado", cancelled: "Cancelado", completed: "Finalizado" };
 const referenceImages = [
   "https://images.unsplash.com/photo-1524368535928-5b5e00ddc76b?auto=format&fit=crop&w=900&q=80",
   "https://images.unsplash.com/photo-1549490349-8643362247b5?auto=format&fit=crop&w=900&q=80",
@@ -60,6 +62,19 @@ type DashboardProps = {
   discord: boolean;
 };
 
+type EventDetailData = {
+  event: EventCard;
+  topicNames: string[];
+  sources: Array<{
+    id: number;
+    name: string;
+    url: string;
+    isPrimary: boolean;
+    lastCheckedAt: string | null;
+    observations: Array<{ id: number; observedState: string; evidence: string | null; checkedAt: string; observedStartsAt: string | null; observedVenue: string | null }>;
+  }>;
+};
+
 export function Dashboard({ events, demo, signedIn, userName, interestTopics, initialInterests, google, discord }: DashboardProps) {
   const router = useRouter();
   const [view, setView] = useState<"list" | "map">("list");
@@ -68,14 +83,18 @@ export function Dashboard({ events, demo, signedIn, userName, interestTopics, in
   const [city, setCity] = useState("Todo Chile");
   const [searching, setSearching] = useState(false);
   const [searchMessage, setSearchMessage] = useState("");
-  const [panel, setPanel] = useState<"account" | "interests" | "submit" | null>(null);
+  const [discoveredEventIds, setDiscoveredEventIds] = useState<string[]>([]);
+  const [panel, setPanel] = useState<"account" | "interests" | "submit" | "event" | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<EventCard | null>(null);
+  const [eventDetail, setEventDetail] = useState<EventDetailData | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
   const deferredQuery = useDeferredValue(query.trim());
   const topics = ["Todos", ...new Set(events.flatMap((event) => event.topicNames))];
   const cities = ["Todo Chile", ...new Set(events.map((event) => event.city).filter((value): value is string => Boolean(value)))];
   const filtered = events.filter((event) => (
     (topic === "Todos" || event.topicNames.includes(topic))
     && (city === "Todo Chile" || event.city === city)
-    && matchesEventSearch(event, deferredQuery)
+    && (matchesEventSearch(event, deferredQuery) || discoveredEventIds.includes(event.id))
   ));
 
   function resetFilters() {
@@ -83,6 +102,7 @@ export function Dashboard({ events, demo, signedIn, userName, interestTopics, in
     setTopic("Todos");
     setCity("Todo Chile");
     setSearchMessage("");
+    setDiscoveredEventIds([]);
   }
 
   async function searchWeb(event: FormEvent<HTMLFormElement>) {
@@ -93,13 +113,9 @@ export function Dashboard({ events, demo, signedIn, userName, interestTopics, in
       setSearchMessage("Escribe al menos 2 caracteres.");
       return;
     }
-    if (events.some((item) => matchesEventSearch(item, term))) {
-      setSearchMessage("Mostrando los eventos que ya encontramos.");
-      return;
-    }
-
     setSearching(true);
-    setSearchMessage(`Buscando eventos verificables sobre “${term}” en Chile...`);
+    const localEventIds = events.filter((item) => matchesEventSearch(item, term)).map((item) => item.id);
+    setSearchMessage(localEventIds.length ? "Consultando el catálogo guardado..." : `Buscando eventos verificables sobre “${term}” en Chile...`);
     try {
       const response = await fetch("/api/discover", {
         method: "POST",
@@ -111,15 +127,30 @@ export function Dashboard({ events, demo, signedIn, userName, interestTopics, in
       if (result.skipped) {
         setSearchMessage(result.reason === "already-running" ? "El radar está ocupado con otra búsqueda. Intenta nuevamente en unos minutos." : "El radar alcanzó su límite de búsquedas por ahora.");
       } else if (result.published > 0) {
+        setDiscoveredEventIds(result.eventIds ?? []);
         setSearchMessage(`Encontramos ${result.published} evento${result.published === 1 ? "" : "s"}. Actualizando resultados...`);
         startTransition(() => router.refresh());
       } else {
-        setSearchMessage(`No encontramos eventos futuros verificables sobre “${term}” en Chile.`);
+        setSearchMessage(`No encontramos eventos actuales o futuros verificables sobre “${term}” en Chile.`);
       }
     } catch (error) {
       setSearchMessage(error instanceof Error ? error.message : "No pudimos completar la búsqueda.");
     } finally {
       setSearching(false);
+    }
+  }
+
+  async function openEvent(event: EventCard) {
+    setSelectedEvent(event);
+    setEventDetail(null);
+    setPanel("event");
+    if (demo) return;
+    setDetailLoading(true);
+    try {
+      const response = await fetch(`/api/events/${event.id}`);
+      if (response.ok) setEventDetail(await response.json());
+    } finally {
+      setDetailLoading(false);
     }
   }
 
@@ -152,7 +183,7 @@ export function Dashboard({ events, demo, signedIn, userName, interestTopics, in
           <form onSubmit={searchWeb} className="glass-panel mt-8 grid gap-2 rounded-2xl p-2 text-left md:grid-cols-[1.5fr_1fr_auto] md:rounded-full">
             <label className="flex items-center gap-2 px-3">
               <Search className="size-4 shrink-0 text-zinc-500" />
-              <Input value={query} onChange={(event) => { setQuery(event.target.value); setTopic("Todos"); setCity("Todo Chile"); setSearchMessage(""); }} placeholder="¿Qué quieres encontrar?" className="h-11 border-0 px-0 text-zinc-100 shadow-none focus-visible:ring-0" />
+              <Input value={query} onChange={(event) => { setQuery(event.target.value); setTopic("Todos"); setCity("Todo Chile"); setSearchMessage(""); setDiscoveredEventIds([]); }} placeholder="¿Qué quieres encontrar?" className="h-11 border-0 px-0 text-zinc-100 shadow-none focus-visible:ring-0" />
             </label>
             <div className="flex items-center gap-2 border-t border-white/8 px-3 md:border-l md:border-t-0">
               <MapPin className="size-4 shrink-0 text-zinc-500" />
@@ -180,7 +211,7 @@ export function Dashboard({ events, demo, signedIn, userName, interestTopics, in
             </div>
           </div>
 
-          {!filtered.length ? <EmptyState query={deferredQuery} onReset={resetFilters} /> : <><TabsContent value="list"><div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">{filtered.map((event, index) => <EventTile key={event.id} event={event} index={index} />)}</div></TabsContent><TabsContent value="map"><EventMap events={filtered} /></TabsContent></>}
+          {!filtered.length ? <EmptyState query={deferredQuery} onReset={resetFilters} /> : <><TabsContent value="list"><div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">{filtered.map((event, index) => <EventTile key={event.id} event={event} index={index} onOpen={() => openEvent(event)} />)}</div></TabsContent><TabsContent value="map"><EventMap events={filtered} /></TabsContent></>}
         </Tabs>
       </div>
 
@@ -192,17 +223,18 @@ export function Dashboard({ events, demo, signedIn, userName, interestTopics, in
       </nav>
 
       <Dialog open={panel !== null} onOpenChange={(open) => { if (!open) setPanel(null); }}>
-        <DialogContent className={panel === "account" ? "max-w-lg" : undefined}>
+        <DialogContent className={panel === "account" ? "max-w-lg" : panel === "event" ? "max-w-3xl" : undefined}>
           {panel === "account" && <><DialogHeader><DialogTitle>Bienvenido a Gustos</DialogTitle><DialogDescription>Ingresa o crea una cuenta sin salir de la aplicación.</DialogDescription></DialogHeader><EmailAuthForm google={google} discord={discord} /></>}
           {panel === "interests" && <><DialogHeader><DialogTitle>Mis gustos</DialogTitle><DialogDescription>Selecciona las señales que el radar debe priorizar para ti.</DialogDescription></DialogHeader>{signedIn ? <InterestPicker topics={interestTopics} initial={initialInterests} /> : <EmailAuthForm google={google} discord={discord} />}</>}
           {panel === "submit" && <><DialogHeader><DialogTitle>Comparte un evento</DialogTitle><DialogDescription>Incluye una fuente pública para que podamos verificarlo antes de publicar.</DialogDescription></DialogHeader>{signedIn ? <SubmitEventForm /> : <EmailAuthForm google={google} discord={discord} />}</>}
+          {panel === "event" && selectedEvent && <EventDetail detail={eventDetail} fallback={selectedEvent} loading={detailLoading} />}
         </DialogContent>
       </Dialog>
     </main>
   );
 }
 
-function EventTile({ event, index }: { event: EventCard; index: number }) {
+function EventTile({ event, index, onOpen }: { event: EventCard; index: number; onOpen: () => void }) {
   const date = new Date(event.startsAt);
   const topic = event.topicNames[0] ?? "Panorama";
   const image = event.imageUrl ?? referenceImages[index % referenceImages.length];
@@ -210,7 +242,7 @@ function EventTile({ event, index }: { event: EventCard; index: number }) {
     <Card className="event-tile gap-0 overflow-hidden rounded-3xl" style={{ "--tile-hue": `${190 + (index % 5) * 28}` } as React.CSSProperties}>
       <div className="event-visual relative grid h-44 place-items-center overflow-hidden" style={{ backgroundImage: `url("${image}")` }}>
         <Badge className="absolute left-3 top-3 bg-black/55 text-zinc-100 backdrop-blur-md">{dateFormatter.format(date)}</Badge>
-        <Badge variant="outline" className="absolute right-3 top-3 bg-black/45 text-zinc-200 backdrop-blur-md">{event.confidence}% confianza</Badge>
+        <Badge variant="outline" className="absolute right-3 top-3 bg-black/45 text-zinc-200 backdrop-blur-md">{event.eventState === "scheduled" ? `${event.confidence}% confianza` : eventStateLabels[event.eventState]}</Badge>
         <strong className="relative z-10 max-w-[80%] text-center text-xl font-medium tracking-tight">{topic}</strong>
       </div>
       <CardContent className="p-5">
@@ -223,9 +255,15 @@ function EventTile({ event, index }: { event: EventCard; index: number }) {
           {event.priceLabel && <span className="flex items-center gap-2"><Ticket className="size-4" />{event.priceLabel}</span>}
         </div>
       </CardContent>
-      <CardFooter className="justify-between gap-3 px-5 pb-5"><small className="truncate text-xs text-zinc-500">{event.sourceName}</small>{event.sourceUrl ? <Button asChild variant="outline" size="sm"><a href={event.sourceUrl} target="_blank" rel="noreferrer">Ver fuente <ExternalLink /></a></Button> : <span className="text-xs text-zinc-500">Evento ficticio</span>}</CardFooter>
+      <CardFooter className="justify-between gap-3 px-5 pb-5"><small className="truncate text-xs text-zinc-500">{event.sourceName}</small><Button variant="outline" size="sm" onClick={onOpen}>Ver detalles</Button></CardFooter>
     </Card>
   );
+}
+
+function EventDetail({ detail, fallback, loading }: { detail: EventDetailData | null; fallback: EventCard; loading: boolean }) {
+  const event = detail?.event ?? fallback;
+  const image = event.imageUrl ?? referenceImages[0];
+  return <div className="space-y-5"><div className="relative h-56 overflow-hidden rounded-xl bg-cover bg-center" style={{ backgroundImage: `linear-gradient(to top, rgba(0,0,0,.82), transparent 70%), url("${image}")` }}><div className="absolute inset-x-0 bottom-0 p-5"><Badge variant="secondary">{eventStateLabels[event.eventState] ?? event.eventState}</Badge><DialogTitle className="mt-3 text-3xl">{event.title}</DialogTitle></div></div><p className="text-sm leading-7 text-zinc-300">{event.description}</p><div className="grid gap-3 rounded-xl border border-white/10 bg-white/4 p-4 text-sm text-zinc-300 sm:grid-cols-2"><span className="flex gap-2"><CalendarDays className="size-4 shrink-0" />{fullDateFormatter.format(new Date(event.startsAt))}{event.endsAt ? ` – ${fullDateFormatter.format(new Date(event.endsAt))}` : ""}</span><span className="flex gap-2"><MapPin className="size-4 shrink-0" />{[event.venue, event.address, event.city, event.region].filter(Boolean).join(" · ")}</span>{event.priceLabel && <span className="flex gap-2"><Ticket className="size-4 shrink-0" />{event.priceLabel}</span>}<span className="flex gap-2"><Clock3 className="size-4 shrink-0" />Verificado {event.verifiedAt ? new Intl.DateTimeFormat("es-CL", { dateStyle: "medium", timeStyle: "short" }).format(new Date(event.verifiedAt)) : "pendiente"}</span></div>{event.statusReason && <div className="rounded-xl border border-amber-400/20 bg-amber-400/8 p-4 text-sm text-amber-100">{event.statusReason}</div>}<section><h3 className="font-medium">Fuentes y verificaciones</h3>{loading && <p className="mt-2 text-sm text-zinc-400">Cargando referencias...</p>}{!loading && !detail?.sources.length && <p className="mt-2 text-sm text-zinc-400">Solo hay una referencia disponible para este evento.</p>}<div className="mt-3 grid gap-3">{detail?.sources.map((source) => <div key={source.id} className="rounded-xl border border-white/10 p-4"><div className="flex items-center justify-between gap-3"><div><b className="text-sm">{source.name}</b>{source.isPrimary && <Badge variant="secondary" className="ml-2">Principal</Badge>}</div><Button asChild variant="outline" size="sm"><a href={source.url} target="_blank" rel="noreferrer">Abrir <ExternalLink /></a></Button></div><div className="mt-3 grid gap-2">{source.observations.slice(0, 3).map((observation) => <p key={observation.id} className="border-l border-white/10 pl-3 text-xs leading-5 text-zinc-400"><b className="text-zinc-300">{eventStateLabels[observation.observedState] ?? observation.observedState}</b> · {observation.evidence} · {new Intl.DateTimeFormat("es-CL", { dateStyle: "medium" }).format(new Date(observation.checkedAt))}</p>)}</div></div>)}</div></section></div>;
 }
 
 function EmptyState({ query, onReset }: { query: string; onReset: () => void }) {

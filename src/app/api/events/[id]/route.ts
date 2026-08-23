@@ -1,11 +1,32 @@
-import { eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getDb } from "@/db";
-import { events } from "@/db/schema";
+import { eventSourceObservations, eventSources, eventTopics, events, topics } from "@/db/schema";
 import { currentUser } from "@/lib/current-user";
 
 const actionSchema = z.object({ action: z.enum(["approve", "reject"]) });
+
+export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  if (!process.env.DATABASE_URL) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  const { id } = await params;
+  const db = getDb();
+  const [event] = await db.select().from(events).where(and(eq(events.id, id), eq(events.status, "published"))).limit(1);
+  if (!event) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  const [topicRows, sourceRows] = await Promise.all([
+    db.select({ name: topics.name }).from(eventTopics).innerJoin(topics, eq(topics.id, eventTopics.topicId)).where(eq(eventTopics.eventId, id)),
+    db.select().from(eventSources).where(eq(eventSources.eventId, id)),
+  ]);
+  const observations = sourceRows.length
+    ? await db.select().from(eventSourceObservations).where(inArray(eventSourceObservations.eventSourceId, sourceRows.map((source) => source.id))).orderBy(desc(eventSourceObservations.checkedAt))
+    : [];
+  const publicEvent = { ...event, submittedBy: undefined };
+  return NextResponse.json({
+    event: publicEvent,
+    topicNames: topicRows.map((topic) => topic.name),
+    sources: sourceRows.map((source) => ({ ...source, observations: observations.filter((observation) => observation.eventSourceId === source.id) })),
+  });
+}
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await currentUser();

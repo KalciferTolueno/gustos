@@ -16,7 +16,9 @@ npm run dev
 
 Sin `DATABASE_URL`, la interfaz funciona con eventos ficticios claramente identificados. El agente nunca funciona sin PostgreSQL y `OPENAI_API_KEY`.
 
-La búsqueda de portada filtra primero los eventos guardados. Si no encuentra coincidencias, el botón `Buscar` puede ejecutar hasta `AGENT_SEARCHES_PER_QUERY` búsquedas web y guardar solo eventos futuros con una fuente verificable. Las consultas invitadas están limitadas por IP para controlar costos y abuso.
+La búsqueda de portada consulta primero PostgreSQL. Cada término, incluso cuando no obtiene resultados, se guarda durante 24 horas para no repetir búsquedas web. Los términos solicitados al menos tres veces y activos durante la última semana se actualizan diariamente. Las consultas invitadas sin caché están limitadas por IP para controlar abuso.
+
+El worker mantiene una matriz de cobertura musical de las 16 regiones, seis familias de géneros y seis periodos hasta el 31 de diciembre de 2027. Durante la carga inicial puede usar hasta `AGENT_BOOTSTRAP_SEARCHES_PER_DAY`; después vuelve a `AGENT_SEARCHES_PER_DAY`. Las fuentes y observaciones se conservan por evento. Los eventos próximos se verifican cada 1, 3 o 7 días según su cercanía; una cancelación requiere un dominio oficial confiable o dos dominios concordantes. La migración registra las principales ticketeras chilenas en `sources`; se pueden agregar organizadores con `trust >= 80`.
 
 ## EasyPanel
 
@@ -61,7 +63,7 @@ https://tu-dominio.cl/api/auth/callback/google
 https://tu-dominio.cl/api/auth/callback/discord
 ```
 
-El acceso por correo y contraseña funciona sin variables adicionales: abre `/login`, crea una cuenta y Auth.js inicia una sesión JWT. Las contraseñas se almacenan con `scrypt` y sal aleatoria, nunca en texto plano. El correo de credenciales se trata como identificador no verificado y se mantiene separado del correo confirmado por Google o Discord. La recuperación de contraseña no está incluida porque requiere configurar un proveedor de correo.
+El acceso por correo y contraseña funciona sin variables adicionales desde el panel `Ingresar` de la portada. Auth.js inicia una sesión JWT. Las contraseñas se almacenan con `scrypt` y sal aleatoria, nunca en texto plano. El correo de credenciales se trata como identificador no verificado y se mantiene separado del correo confirmado por Google o Discord. La recuperación de contraseña no está incluida porque requiere configurar un proveedor de correo.
 
 Para convertir una cuenta en administradora:
 
