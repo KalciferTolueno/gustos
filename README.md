@@ -59,10 +59,12 @@ https://tu-dominio.cl/api/auth/callback/google
 https://tu-dominio.cl/api/auth/callback/discord
 ```
 
+El acceso por correo y contraseña funciona sin variables adicionales: abre `/login`, crea una cuenta y Auth.js inicia una sesión JWT. Las contraseñas se almacenan con `scrypt` y sal aleatoria, nunca en texto plano. El correo de credenciales se trata como identificador no verificado y se mantiene separado del correo confirmado por Google o Discord. La recuperación de contraseña no está incluida porque requiere configurar un proveedor de correo.
+
 Para convertir una cuenta en administradora:
 
 ```sql
-update users set role = 'admin' where email = 'tu-correo@ejemplo.cl';
+update users set role = 'admin' where email = 'tu-correo@ejemplo.cl' or credential_email = 'tu-correo@ejemplo.cl';
 ```
 
 ## Comandos

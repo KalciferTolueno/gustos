@@ -258,6 +258,34 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .moderation-list button { padding: 9px 13px; color: #fff; background: var(--ink); border: 0; cursor: pointer; font-size: 11px; font-weight: 900; }
 .moderation-list button.reject { color: var(--ink); background: transparent; border: 1px solid var(--ink); }
 
+.login-page { min-height: 100vh; display: grid; grid-template-columns: minmax(380px, 1.1fr) minmax(420px, .9fr); background: var(--paper); }
+.login-pitch { min-height: 100vh; padding: clamp(30px, 6vw, 90px); display: flex; flex-direction: column; justify-content: space-between; color: #fff; background: var(--ink); background-image: radial-gradient(circle at 80% 18%, rgba(201,255,74,.18) 0 90px, transparent 91px), linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px); background-size: auto, 42px 42px, 42px 42px; }
+.login-pitch .back-link { color: #fff; }
+.login-pitch > div > span, .auth-heading > span { color: var(--coral); font-size: 9px; font-weight: 900; letter-spacing: .2em; }
+.login-pitch h1 { margin: 15px 0 22px; font-size: clamp(54px, 7vw, 94px); line-height: .85; letter-spacing: -.075em; }
+.login-pitch h1 em { color: var(--acid); font-weight: 400; }
+.login-pitch p { max-width: 460px; color: #a7aaa1; line-height: 1.55; }
+.login-panel { width: min(520px, 100%); margin: auto; padding: 45px clamp(25px, 6vw, 75px); }
+.auth-tabs { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid var(--line); }
+.auth-tabs button { padding: 12px; border: 0; border-bottom: 3px solid transparent; background: transparent; cursor: pointer; color: var(--muted); font-size: 11px; font-weight: 900; text-transform: uppercase; }
+.auth-tabs button.selected { color: var(--ink); border-bottom-color: var(--coral); }
+.auth-heading { margin: 45px 0 30px; }
+.auth-heading h2 { margin: 7px 0 0; font-size: 38px; letter-spacing: -.055em; }
+.auth-form { display: grid; gap: 18px; }
+.auth-form label { display: grid; gap: 7px; }
+.auth-form label > span { font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: .08em; }
+.auth-form label > div { display: flex; align-items: center; gap: 10px; padding: 0 13px; border: 1px solid var(--line); background: #fff; }
+.auth-form label > div:focus-within { border-color: var(--ink); box-shadow: 3px 3px 0 var(--acid); }
+.auth-form input { width: 100%; padding: 13px 0; border: 0; outline: 0; background: transparent; }
+.auth-form > small { margin-top: -10px; color: var(--muted); font-size: 10px; }
+.auth-form > button { padding: 14px; border: 0; color: #fff; background: var(--ink); cursor: pointer; font-weight: 900; }
+.auth-form > button:disabled { opacity: .55; }
+.auth-divider { position: relative; margin: 28px 0 20px; text-align: center; }
+.auth-divider:before { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: var(--line); }
+.auth-divider span { position: relative; padding: 0 10px; color: var(--muted); background: var(--paper); font-size: 10px; }
+.social-login { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.social-login button { padding: 11px; border: 1px solid var(--ink); background: transparent; cursor: pointer; font-weight: 900; }
+
 @media (max-width: 820px) {
   .sidebar { display: none; }
   .content { margin-left: 0; }
@@ -311,6 +339,12 @@ button, a { -webkit-tap-highlight-color: transparent; }
   .interest-actions span { display: none; }
   .interest-actions button { margin-left: auto; }
   .admin-page header, .moderation-list article { align-items: flex-start; flex-direction: column; }
+  .login-page { display: block; }
+  .login-pitch { min-height: 275px; padding: 28px 22px; }
+  .login-pitch h1 { margin-top: 12px; font-size: 48px; }
+  .login-pitch p { display: none; }
+  .login-panel { padding: 35px 22px 60px; }
+  .auth-heading { margin: 32px 0 24px; }
 }
 
 @media (max-width: 440px) {

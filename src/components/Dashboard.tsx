@@ -56,7 +56,7 @@ export function Dashboard({ events, demo }: { events: EventCard[]; demo: boolean
           <p>La IA rastrea nuevos eventos y conserva siempre la fuente.</p>
           <span><i /> Proxima busqueda en 4 h</span>
         </div>
-        <Link className="profile-link" href="/api/auth/signin"><CircleUserRound size={24} /><span><b>Entrar</b><small>Google o Discord</small></span></Link>
+        <Link className="profile-link" href="/login"><CircleUserRound size={24} /><span><b>Entrar</b><small>Correo, Google o Discord</small></span></Link>
       </aside>
 
       <section className="content">
@@ -66,7 +66,7 @@ export function Dashboard({ events, demo }: { events: EventCard[]; demo: boolean
             <Search size={19} />
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Artista, anime, juego o ciudad..." />
           </label>
-          <Link className="login-button" href="/api/auth/signin">Entrar</Link>
+          <Link className="login-button" href="/login">Entrar</Link>
         </header>
 
         <div className="hero">

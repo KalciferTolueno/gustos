@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 export default async function InterestsPage() {
   const user = await currentUser();
-  if (!user) return <main className="form-page"><div className="form-card success-card"><h1>Inicia sesión</h1><p>Guarda tus gustos y úsalos en todos tus dispositivos.</p><Link href="/api/auth/signin">Entrar</Link></div></main>;
+  if (!user) return <main className="form-page"><div className="form-card success-card"><h1>Inicia sesión</h1><p>Guarda tus gustos y úsalos en todos tus dispositivos.</p><Link href="/login">Entrar</Link></div></main>;
   const db = getDb();
   const [allTopics, selected] = await Promise.all([
     db.select({ id: topics.id, name: topics.name, type: topics.type }).from(topics).orderBy(asc(topics.name)),

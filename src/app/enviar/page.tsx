@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 export default async function SubmitPage() {
   const user = await currentUser();
   if (!user) return (
-    <main className="form-page"><div className="form-card success-card"><h1>Inicia sesión</h1><p>Necesitas una cuenta para enviar eventos y evitar spam.</p><Link href="/api/auth/signin">Entrar con Google o Discord</Link><Link className="subtle-link" href="/">Volver</Link></div></main>
+    <main className="form-page"><div className="form-card success-card"><h1>Inicia sesión</h1><p>Necesitas una cuenta para enviar eventos y evitar spam.</p><Link href="/login">Entrar o crear cuenta</Link><Link className="subtle-link" href="/">Volver</Link></div></main>
   );
   return <SubmitEventForm />;
 }

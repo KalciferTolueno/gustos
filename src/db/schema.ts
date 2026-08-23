@@ -17,6 +17,8 @@ export const users = pgTable("users", {
   email: text("email").unique(),
   emailVerified: timestamp("email_verified", { mode: "date", withTimezone: true }),
   image: text("image"),
+  credentialEmail: text("credential_email").unique(),
+  passwordHash: text("password_hash"),
   city: text("city"),
   region: text("region"),
   role: text("role").notNull().default("user"),
