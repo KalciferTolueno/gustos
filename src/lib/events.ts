@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, asc, eq, gt, sql } from "drizzle-orm";
+import { and, asc, eq, gt, gte, or, sql } from "drizzle-orm";
 import { getDb } from "../db";
 import { eventTopics, events, topics, type EventRow } from "../db/schema";
 
@@ -117,12 +117,13 @@ export async function listEvents(): Promise<{ events: EventCard[]; demo: boolean
   if (!process.env.DATABASE_URL) return { events: demoEvents, demo: true };
 
   const db = getDb();
+  const now = new Date();
   const rows = await db
     .select({ event: events, topicName: topics.name })
     .from(events)
     .leftJoin(eventTopics, eq(eventTopics.eventId, events.id))
     .leftJoin(topics, eq(topics.id, eventTopics.topicId))
-    .where(and(eq(events.status, "published"), gt(events.startsAt, new Date())))
+    .where(and(eq(events.status, "published"), or(gt(events.startsAt, now), gte(events.endsAt, now))))
     .orderBy(asc(events.startsAt));
 
   const grouped = new Map<string, EventCard>();

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { eventKey } from "./events";
+import { matchesEventSearch } from "./event-search";
 import { hashPassword, verifyPassword } from "./passwords";
 
 describe("eventKey", () => {
@@ -24,5 +25,22 @@ describe("passwords", () => {
     expect(first).not.toBe(second);
     await expect(verifyPassword("correct-horse-42", first)).resolves.toBe(true);
     await expect(verifyPassword("wrong-password", first)).resolves.toBe(false);
+  });
+});
+
+describe("matchesEventSearch", () => {
+  it("matches unaccented multi-word queries across event details", () => {
+    const event = {
+      title: "Charlotte de Witte",
+      description: "Festival de música electrónica",
+      city: "Viña del Mar",
+      region: "Valparaíso",
+      venue: "Quinta Vergara",
+      address: null,
+      topicNames: ["Techno"],
+    } as Parameters<typeof matchesEventSearch>[0];
+    expect(matchesEventSearch(event, "musica vina")).toBe(true);
+    expect(matchesEventSearch(event, "charlotte techno")).toBe(true);
+    expect(matchesEventSearch(event, "furry")).toBe(false);
   });
 });
