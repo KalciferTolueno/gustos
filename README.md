@@ -18,6 +18,25 @@ Sin `DATABASE_URL`, la interfaz funciona con eventos ficticios claramente identi
 
 ## EasyPanel
 
+### Opción recomendada: Compose
+
+Crea un solo servicio `Compose` con fuente Git y estos valores:
+
+```text
+Repositorio: git@github.com:KalciferTolueno/gustos.git
+Rama: main
+Ruta de compilación: /
+Archivo Compose: docker-compose.yml
+```
+
+Copia las variables de `.env.example` al editor `Environment` de EasyPanel. Como mínimo configura `POSTGRES_PASSWORD`, `AUTH_SECRET`, `AUTH_URL`, `AGENT_RUN_SECRET` y `OPENAI_API_KEY`. Usa una contraseña alfanumérica para PostgreSQL porque se incluye en la URL interna.
+
+Despliega y después crea un dominio dirigido al servicio interno `web`, protocolo HTTP, puerto `3000`. El Compose espera PostgreSQL, ejecuta migraciones y carga los gustos iniciales antes de iniciar la web; el worker comienza únicamente cuando la web está saludable.
+
+El volumen `postgres-data` conserva la base entre despliegues. Configura en EasyPanel un backup programado de ese volumen hacia almacenamiento externo. Para restauraciones selectivas también puedes ejecutar `pg_dump` desde el contenedor `db`.
+
+### Opción alternativa: servicios separados
+
 Crea un proyecto con estos servicios:
 
 1. `gustos-db`: servicio PostgreSQL privado. Activa copias diarias hacia almacenamiento externo y prueba una restauración.

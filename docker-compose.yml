@@ -1,0 +1,66 @@
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: gustos
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d gustos"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: sh -c "npm run db:migrate && npm run db:seed && npm start"
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/gustos
+      AUTH_SECRET: ${AUTH_SECRET}
+      AUTH_URL: ${AUTH_URL}
+      AUTH_GOOGLE_ID: ${AUTH_GOOGLE_ID:-}
+      AUTH_GOOGLE_SECRET: ${AUTH_GOOGLE_SECRET:-}
+      AUTH_DISCORD_ID: ${AUTH_DISCORD_ID:-}
+      AUTH_DISCORD_SECRET: ${AUTH_DISCORD_SECRET:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.6-luna}
+      AGENT_SEARCHES_PER_DAY: ${AGENT_SEARCHES_PER_DAY:-25}
+      AGENT_SEARCHES_PER_MONTH: ${AGENT_SEARCHES_PER_MONTH:-750}
+      AGENT_SEARCHES_PER_RUN: ${AGENT_SEARCHES_PER_RUN:-5}
+      AGENT_RUN_SECRET: ${AGENT_RUN_SECRET}
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: npm run worker
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/gustos
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.6-luna}
+      AGENT_INTERVAL_MINUTES: ${AGENT_INTERVAL_MINUTES:-360}
+      AGENT_SEARCHES_PER_DAY: ${AGENT_SEARCHES_PER_DAY:-25}
+      AGENT_SEARCHES_PER_MONTH: ${AGENT_SEARCHES_PER_MONTH:-750}
+      AGENT_SEARCHES_PER_RUN: ${AGENT_SEARCHES_PER_RUN:-5}
+    depends_on:
+      web:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
