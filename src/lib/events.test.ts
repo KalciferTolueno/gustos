@@ -3,7 +3,7 @@ import { acceptedEventState, eventHasNotEnded, eventIdentityKey, eventKey, isSpe
 import { matchesEventSearch } from "./event-search";
 import { hashPassword, verifyPassword } from "./passwords";
 import { coverageQueryDefinitions, normalizeDiscoveryQuery, queryIsFresh } from "./discovery-queries";
-import { extractEventImage, extractEventImages, hasSupportedImageSignature } from "./event-images";
+import { extractEventImage, extractEventImages, hasSupportedImageSignature, selectMatchingEventImage } from "./event-images";
 import { agentUsage } from "./agent";
 import { eventMapLocation } from "./event-map-location";
 import { musicGenresFromLabels } from "./music-genres";
@@ -126,6 +126,18 @@ describe("event images", () => {
     expect(hasSupportedImageSignature(Buffer.from("<!doctype html><html>"))).toBe(false);
     expect(hasSupportedImageSignature(Buffer.from([0xff, 0xd8, 0xff, 0xe0]))).toBe(true);
     expect(hasSupportedImageSignature(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))).toBe(true);
+  });
+
+  it("does not use an arbitrary image when the AI verifier is unavailable", async () => {
+    const savedKey = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    try {
+      await expect(selectMatchingEventImage("The Grid: Outworld — Klangkuenstler All Night Long", ["https://www.puntoticket.com/todos?direct=true"]))
+        .resolves.toBeNull();
+    } finally {
+      if (savedKey === undefined) delete process.env.OPENAI_API_KEY;
+      else process.env.OPENAI_API_KEY = savedKey;
+    }
   });
 });
 

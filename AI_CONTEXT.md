@@ -149,7 +149,7 @@ No usar imágenes de stock, genéricas ni de otros eventos. `src/lib/event-image
 4. Reparte hasta 12 candidatas entre las cuatro páginas para que una fuente no monopolice la selección.
 5. Con una candidata oficial, la usa directamente.
 6. Con varias candidatas, OpenAI visión selecciona la que corresponda al título.
-7. Sin candidatas extraíbles, OpenAI hace hasta 2 búsquedas web para encontrar una URL directa de afiche, banner o fotografía específica.
+7. Si las candidatas extraíbles no corresponden inequívocamente, o no existe una fuente específica todavía, OpenAI busca en la web una URL directa de afiche, banner o fotografía específica. Nunca se usa una imagen solo porque tenga un formato válido.
 
 El worker ejecuta el backfill después de la verificación para no retrasar comprobaciones temporales. Aprobar un evento desde `/admin` también llama `ensureEventImage()`; un fallo de imagen se registra pero no revierte una aprobación ya guardada.
 

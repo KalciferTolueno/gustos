@@ -20,7 +20,7 @@ export async function repairGenericEventSources(limit = 4) {
   const rows = await db.select({ id: events.id, title: events.title, startsAt: events.startsAt, city: events.city, sourceUrl: events.sourceUrl }).from(events).where(and(
     eq(events.status, "published"),
     or(gt(events.startsAt, new Date()), eq(events.eventState, "postponed")),
-  )).orderBy(asc(events.updatedAt)).limit(limit * 4);
+  )).orderBy(asc(events.updatedAt));
   let checked = 0;
   let repaired = 0;
   for (const event of rows) {
@@ -48,7 +48,9 @@ export async function repairGenericEventSources(limit = 4) {
       const sourceUrl = normalizedSourceUrl(result.sourceUrl);
       if (!isSpecificEventSourceUrl(result.sourceUrl, event.title) || !consulted.has(normalizedSourceUrl(result.sourceUrl, true))) throw new Error("Repair source was not consulted or is generic");
       await db.transaction(async (tx) => {
-        await tx.update(events).set({ sourceName: result.sourceName, sourceUrl: result.sourceUrl, updatedAt: new Date() }).where(eq(events.id, event.id));
+        // The former source could only supply a category banner. Force the image
+        // pipeline to re-verify it against the repaired event page.
+        await tx.update(events).set({ sourceName: result.sourceName, sourceUrl: result.sourceUrl, imageUrl: null, updatedAt: new Date() }).where(eq(events.id, event.id));
         await tx.update(eventSources).set({ isPrimary: false }).where(eq(eventSources.eventId, event.id));
         await tx.insert(eventSources).values({ eventId: event.id, name: result.sourceName, url: result.sourceUrl, normalizedUrl: sourceUrl, isPrimary: true, lastCheckedAt: new Date(), nextCheckAt: new Date(Date.now() + 24 * 60 * 60_000) }).onConflictDoUpdate({
           target: [eventSources.eventId, eventSources.normalizedUrl],

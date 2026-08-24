@@ -169,7 +169,6 @@ export async function findEventPageImage(sourceUrl: string) {
 
 export async function selectMatchingEventImage(title: string, sourceUrls: string[], existingImage?: string | null) {
   const directSourceUrls = sourceUrls.filter((url) => isSpecificEventSourceUrl(url, title)).slice(0, 4);
-  if (!directSourceUrls.length) return null;
   const pages = await Promise.allSettled(directSourceUrls.map(findEventPageImages));
   const pageImages = pages.map((page) => page.status === "fulfilled" ? page.value : []);
   const candidates: string[] = [];
@@ -182,36 +181,57 @@ export async function selectMatchingEventImage(title: string, sourceUrls: string
   for (let index = 0; candidates.length < 12 && pageImages.some((images) => index < images.length); index += 1) {
     for (const images of pageImages) if (candidates.length < 12 && images[index] && !candidates.includes(images[index])) candidates.push(images[index]);
   }
-  if (!process.env.OPENAI_API_KEY) return candidates[0] ?? null;
+  // A URL merely being an image does not prove it depicts this event. Leave the
+  // card without an image when the AI verifier is unavailable instead of using a
+  // logo, campaign banner, or image from a different event.
+  if (!process.env.OPENAI_API_KEY) return null;
   const reservation = await beginAgentRun("image-selection", title);
-  if (reservation.skipped) return candidates[0];
-  let usage = agentUsage(undefined, 0);
+  if (reservation.skipped) return null;
+  let inputTokens = 0;
+  let outputTokens = 0;
   let searches = 0;
   try {
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    const response = candidates.length ? await openai.responses.create({
-      model: process.env.OPENAI_MODEL ?? "gpt-5.6-luna", reasoning: { effort: "low" },
-      input: [{ role: "user", content: [
-        { type: "input_text", text: `Selecciona la imagen que corresponda específicamente al evento ${JSON.stringify(title)}. Las imágenes siguientes corresponden, en el mismo orden, a estas URLs:\n${candidates.map((url, index) => `${index + 1}. ${url}`).join("\n")}\nPrioriza afiches, banners o fotografías del evento; evita logos genéricos, iconos y publicidad no relacionada. Si ninguna coincide inequívocamente, devuelve imageUrl=null.` },
-        ...candidates.map((image_url) => ({ type: "input_image" as const, image_url, detail: "low" as const })),
-      ] }],
-      text: { format: { type: "json_schema", name: "event_image", strict: true, schema: { type: "object", additionalProperties: false, properties: { imageUrl: { type: ["string", "null"], enum: [null, ...candidates] } }, required: ["imageUrl"] } } },
-    }) : await openai.responses.create({
+    if (candidates.length) {
+      const response = await openai.responses.create({
+        model: process.env.OPENAI_MODEL ?? "gpt-5.6-luna", reasoning: { effort: "low" },
+        input: [{ role: "user", content: [
+          { type: "input_text", text: `Selecciona la imagen que corresponda específicamente al evento ${JSON.stringify(title)}. Las imágenes siguientes corresponden, en el mismo orden, a estas URLs:\n${candidates.map((url, index) => `${index + 1}. ${url}`).join("\n")}\nPrioriza afiches, banners o fotografías del evento; evita logos genéricos, iconos y publicidad no relacionada. Si ninguna coincide inequívocamente, devuelve imageUrl=null.` },
+          ...candidates.map((image_url) => ({ type: "input_image" as const, image_url, detail: "low" as const })),
+        ] }],
+        text: { format: { type: "json_schema", name: "event_image", strict: true, schema: { type: "object", additionalProperties: false, properties: { imageUrl: { type: ["string", "null"], enum: [null, ...candidates] } }, required: ["imageUrl"] } } },
+      });
+      inputTokens += response.usage?.input_tokens ?? 0;
+      outputTokens += response.usage?.output_tokens ?? 0;
+      const selected = JSON.parse(response.output_text).imageUrl as string | null;
+      const usableSelection = selected ? await validateEventImageUrl(selected) : null;
+      if (usableSelection && candidates.includes(usableSelection)) {
+        await finishAgentRun(reservation.runId, { status: "succeeded", searches, candidates: candidates.length, published: 0, ...agentUsage({ input_tokens: inputTokens, output_tokens: outputTokens }, searches) });
+        return usableSelection;
+      }
+    }
+
+    const sourceContext = [...new Set([...directSourceUrls, ...sourceUrls])].slice(0, 4);
+    const response = await openai.responses.create({
       model: process.env.OPENAI_MODEL ?? "gpt-5.6-luna", reasoning: { effort: "low" },
       tools: [{ type: "web_search", search_context_size: "medium", user_location: { type: "approximate", country: "CL", timezone: "America/Santiago" } }],
       tool_choice: "required",
       // @ts-expect-error OpenAI accepts this field, but this SDK release omits it from request types.
       max_tool_calls: Math.max(1, Number(process.env.AGENT_IMAGE_SEARCHES_PER_EVENT ?? 4)),
-      input: `Busca un afiche, banner o fotografía real y específica del evento ${JSON.stringify(title)}. Revisa primero estas páginas: ${directSourceUrls.join(", ")}. Devuelve la URL pública directa de una imagen que haga match inequívoco con el nombre del evento; nunca uses stock, logos genéricos ni imágenes de otro evento.`,
+      include: ["web_search_call.action.sources"],
+      input: `Busca en la web un afiche, banner o fotografía real y específica del evento ${JSON.stringify(title)}. Las posibles fuentes del evento son: ${sourceContext.join(", ") || "ninguna"}. Si sus imágenes son genéricas, no corresponden inequívocamente al evento o no hay una ficha específica, continúa buscando en fuentes oficiales del organizador, artista, recinto o ticketera. Devuelve la URL pública directa de una imagen que haga match inequívoco con el nombre del evento; nunca uses stock, logos genéricos ni imágenes de otro evento. Si no puedes verificarla, devuelve imageUrl=null.`,
       text: { format: { type: "json_schema", name: "event_image_search", strict: true, schema: { type: "object", additionalProperties: false, properties: { imageUrl: { type: ["string", "null"] } }, required: ["imageUrl"] } } },
     });
     searches = response.output.filter((item) => item.type === "web_search_call").length;
-    usage = agentUsage(response.usage, searches);
+    inputTokens += response.usage?.input_tokens ?? 0;
+    outputTokens += response.usage?.output_tokens ?? 0;
     const selected = JSON.parse(response.output_text).imageUrl as string | null;
     const usableSelection = selected ? await validateEventImageUrl(selected) : null;
+    const usage = agentUsage({ input_tokens: inputTokens, output_tokens: outputTokens }, searches);
     await finishAgentRun(reservation.runId, { status: "succeeded", searches, candidates: candidates.length, published: 0, ...usage });
-    return candidates.length ? usableSelection && candidates.includes(usableSelection) ? usableSelection : null : usableSelection;
+    return usableSelection;
   } catch (error) {
+    const usage = agentUsage({ input_tokens: inputTokens, output_tokens: outputTokens }, searches);
     await finishAgentRun(reservation.runId, { status: "failed", searches, ...usage, error: error instanceof Error ? error.message.slice(0, 2000) : "Image selection failed" });
     return null;
   }

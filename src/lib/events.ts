@@ -399,14 +399,14 @@ export async function consolidateDuplicateEvents(limit = Number.POSITIVE_INFINIT
 
 export async function promoteSpecificEventSources(limit = 24) {
   const db = getDb();
-  const rows = await db.select({ id: events.id, title: events.title, sourceUrl: events.sourceUrl }).from(events).where(eq(events.status, "published")).orderBy(asc(events.updatedAt)).limit(limit * 4);
+  const rows = await db.select({ id: events.id, title: events.title, sourceUrl: events.sourceUrl }).from(events).where(eq(events.status, "published")).orderBy(asc(events.updatedAt));
   let upgraded = 0;
   for (const event of rows) {
     if (isSpecificEventSourceUrl(event.sourceUrl, event.title)) continue;
     const sourcesForEvent = await db.select({ name: eventSources.name, url: eventSources.url }).from(eventSources).where(eq(eventSources.eventId, event.id)).orderBy(desc(eventSources.isPrimary), asc(eventSources.firstSeenAt)).limit(4);
     const directSource = sourcesForEvent.find((source) => isSpecificEventSourceUrl(source.url, event.title));
     if (!directSource) continue;
-    await db.update(events).set({ sourceName: directSource.name, sourceUrl: directSource.url, updatedAt: new Date() }).where(eq(events.id, event.id));
+    await db.update(events).set({ sourceName: directSource.name, sourceUrl: directSource.url, imageUrl: null, updatedAt: new Date() }).where(eq(events.id, event.id));
     upgraded += 1;
     if (upgraded >= limit) break;
   }
