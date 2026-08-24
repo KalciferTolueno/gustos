@@ -209,6 +209,9 @@ export function sameEventTitle(first: string, second: string) {
   const firstTitle = normalizedText(first);
   const secondTitle = normalizedText(second);
   if (firstTitle === secondTitle) return { matches: true, exact: true };
+  const firstCompact = firstTitle.replace(/\s+/g, "");
+  const secondCompact = secondTitle.replace(/\s+/g, "");
+  if (firstCompact.length >= 8 && firstCompact === secondCompact) return { matches: true, exact: true };
   const base = (title: string) => normalizedText(title.split(/\s+(?:—|–|-)\s+|[:|]/, 1)[0]);
   const firstBase = base(first);
   const secondBase = base(second);
@@ -228,12 +231,20 @@ function compatibleLocation(first?: string | null, second?: string | null) {
 export function sameEventOccurrence(first: { title: string; startsAt: Date; timePrecision?: string; city?: string | null; venue?: string | null }, second: { title: string; startsAt: Date; timePrecision?: string; city?: string | null; venue?: string | null }) {
   const firstCity = normalizedText(first.city);
   const secondCity = normalizedText(second.city);
+  const firstVenue = normalizedText(first.venue);
+  const secondVenue = normalizedText(second.venue);
   const title = sameEventTitle(first.title, second.title);
   const sameTime = first.startsAt.toISOString().slice(0, 16) === second.startsAt.toISOString().slice(0, 16);
   const sameDay = first.startsAt.toISOString().slice(0, 10) === second.startsAt.toISOString().slice(0, 10);
   const dateOnly = first.timePrecision === "date" || second.timePrecision === "date";
+  const closeTime = Math.abs(first.startsAt.getTime() - second.startsAt.getTime()) <= 90 * 60_000;
   const compatibleCities = !firstCity || !secondCity || firstCity === secondCity || (isSantiagoMetroCity(firstCity) && isSantiagoMetroCity(secondCity));
-  return title.matches && (sameTime || (sameDay && (!title.exact || dateOnly))) && compatibleCities && compatibleLocation(first.venue, second.venue);
+  const compatibleVenues = compatibleLocation(first.venue, second.venue);
+  const sameNamedVenue = Boolean(firstVenue && secondVenue && compatibleVenues);
+  return title.matches
+    && (sameTime || (sameDay && (!title.exact || dateOnly || (closeTime && sameNamedVenue))))
+    && compatibleCities
+    && compatibleVenues;
 }
 
 function sameFestivalSeries(first: { title: string; startsAt: Date; city?: string | null; sourceName?: string; sourceUrl?: string }, second: { title: string; startsAt: Date; city?: string | null; sourceName?: string; sourceUrl?: string }) {
@@ -266,7 +277,7 @@ export function eventIdentityKey(title: string, startsAt: Date, city?: string | 
   return createHash("md5").update(`${eventOccurrenceKey(title, startsAt)}|${normalizedText(city)}|${normalizedText(venue)}`).digest("hex");
 }
 
-export async function consolidateDuplicateEvents(limit = 20) {
+export async function consolidateDuplicateEvents(limit = Number.POSITIVE_INFINITY) {
   const db = getDb();
   const rows = await db.select().from(events).orderBy(asc(events.createdAt));
   const occurrenceGroups = new Map<string, typeof rows>();
@@ -278,9 +289,14 @@ export async function consolidateDuplicateEvents(limit = 20) {
     const clusters: Array<typeof rows> = [];
     const specificFirst = eventsOnSameDay.sort((a, b) => Number(Boolean(b.city)) + Number(Boolean(b.venue)) - Number(Boolean(a.city)) - Number(Boolean(a.venue)));
     for (const event of specificFirst) {
-      const matches = clusters.filter((cluster) => sameEventOccurrence(cluster[0], event) || sameFestivalSeries(cluster[0], event));
-      if (matches.length === 1) matches[0].push(event);
-      else clusters.push([event]);
+      const matchingIndexes = clusters.flatMap((cluster, index) => sameEventOccurrence(cluster[0], event) || sameFestivalSeries(cluster[0], event) ? [index] : []);
+      if (matchingIndexes.length === 0) {
+        clusters.push([event]);
+      } else {
+        const [primaryIndex, ...additionalIndexes] = matchingIndexes;
+        clusters[primaryIndex].push(event);
+        for (const index of additionalIndexes.reverse()) clusters[primaryIndex].push(...clusters.splice(index, 1)[0]);
+      }
     }
     return clusters;
   });
@@ -293,7 +309,10 @@ export async function consolidateDuplicateEvents(limit = 20) {
     const sharedSeries = Boolean(seriesTitles[0]) && seriesTitles.every((title) => title === seriesTitles[0]);
     const canonicalTitle = sharedSeries ? eventSeriesTitle(keeper.title) : keeper.title;
     const venueNames = [...new Set(group.map((event) => event.venue).filter((venue): venue is string => Boolean(venue)))];
-    const canonicalVenue = sharedSeries && venueNames.length > 1 ? "Múltiples recintos" : keeper.venue ?? venueNames[0];
+    const incompatibleVenues = venueNames.some((venue, index) => venueNames.slice(index + 1).some((other) => !compatibleLocation(venue, other)));
+    const canonicalVenue = sharedSeries && incompatibleVenues
+      ? "Múltiples recintos"
+      : venueNames.sort((a, b) => b.length - a.length)[0] ?? keeper.venue;
     const identityKey = eventIdentityKey(canonicalTitle, keeper.startsAt, canonicalCity, canonicalVenue);
     const duplicateIds = duplicates.map((event) => event.id);
     await db.transaction(async (tx) => {

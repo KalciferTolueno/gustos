@@ -40,6 +40,10 @@ describe("eventKey", () => {
       .not.toBe(eventIdentityKey("RushCon 2026", new Date("2027-03-01T20:00:00Z"), "Valparaíso", "Centro Cultural"));
     const occurrence = { title: "RushCon 2026", startsAt: new Date("2027-03-01T20:00:00Z"), city: "Santiago" };
     expect(sameEventOccurrence({ ...occurrence, venue: "Centro Cultural" }, { ...occurrence, venue: "Centro Cultural de Santiago" })).toBe(true);
+    expect(sameEventOccurrence(
+      { title: "Expo Game 2026", startsAt: new Date("2026-10-02T15:00:00Z"), timePrecision: "exact", city: "Santiago", venue: "Estación Mapocho" },
+      { title: "ExpoGame 2026", startsAt: new Date("2026-10-02T16:00:00Z"), timePrecision: "exact", city: "Santiago", venue: "Centro Cultural Estación Mapocho" },
+    )).toBe(true);
     expect(sameEventOccurrence({ ...occurrence, venue: "Cine A" }, { ...occurrence, venue: "Cine B" })).toBe(false);
     expect(sameEventOccurrence(
       { ...occurrence, startsAt: new Date("2027-03-01T13:00:00Z"), venue: "Centro Cultural" },
