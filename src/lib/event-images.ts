@@ -7,6 +7,7 @@ import { and, asc, desc, eq, gt, isNotNull, isNull, or } from "drizzle-orm";
 import { getDb } from "../db";
 import { eventSources, events } from "../db/schema";
 import { agentUsage, beginAgentRun, finishAgentRun } from "./agent";
+import { isSpecificEventSourceUrl } from "./events";
 
 function publicAddress(address: string) {
   if (isIP(address) === 4) {
@@ -114,7 +115,9 @@ export async function findEventPageImage(sourceUrl: string) {
 }
 
 export async function selectMatchingEventImage(title: string, sourceUrls: string[], existingImage?: string | null) {
-  const pages = await Promise.allSettled(sourceUrls.slice(0, 4).map(findEventPageImages));
+  const directSourceUrls = sourceUrls.filter(isSpecificEventSourceUrl).slice(0, 4);
+  if (!directSourceUrls.length) return null;
+  const pages = await Promise.allSettled(directSourceUrls.map(findEventPageImages));
   const pageImages = pages.map((page) => page.status === "fulfilled" ? page.value : []);
   const candidates: string[] = [];
   if (existingImage) {
@@ -143,7 +146,7 @@ export async function selectMatchingEventImage(title: string, sourceUrls: string
       tool_choice: "required",
       // @ts-expect-error OpenAI accepts this field, but this SDK release omits it from request types.
       max_tool_calls: Math.max(1, Number(process.env.AGENT_IMAGE_SEARCHES_PER_EVENT ?? 4)),
-      input: `Busca un afiche, banner o fotografía real y específica del evento ${JSON.stringify(title)}. Revisa primero estas páginas: ${sourceUrls.join(", ")}. Devuelve la URL pública directa de una imagen que haga match inequívoco con el nombre del evento; nunca uses stock, logos genéricos ni imágenes de otro evento.`,
+      input: `Busca un afiche, banner o fotografía real y específica del evento ${JSON.stringify(title)}. Revisa primero estas páginas: ${directSourceUrls.join(", ")}. Devuelve la URL pública directa de una imagen que haga match inequívoco con el nombre del evento; nunca uses stock, logos genéricos ni imágenes de otro evento.`,
       text: { format: { type: "json_schema", name: "event_image_search", strict: true, schema: { type: "object", additionalProperties: false, properties: { imageUrl: { type: ["string", "null"] } }, required: ["imageUrl"] } } },
     });
     searches = response.output.filter((item) => item.type === "web_search_call").length;

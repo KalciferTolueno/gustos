@@ -184,6 +184,8 @@ export function isSpecificEventSourceUrl(value: string) {
   try {
     const url = new URL(value);
     const path = url.pathname.replace(/\/$/, "").toLocaleLowerCase("en-US");
+    const host = url.hostname.replace(/^www\./, "").toLocaleLowerCase("en-US");
+    if (host === "puntoticket.com" && ["/", "/todos", "/inicio", "/home"].includes(path || "/")) return false;
     return Boolean(url.search || (path && !["/", "/inicio", "/home", "/index"].includes(path)));
   } catch {
     return false;

@@ -212,6 +212,7 @@ export async function runDiscoveryAgent(query?: string, queryId?: number, queryK
       if (!eventHasNotEnded(startsAt, endsAt) || !candidateSources.has(normalizedSourceUrl(candidate.sourceUrl, true))) continue;
       const references = candidate.references.filter((reference) => candidateSources.has(normalizedSourceUrl(reference.url, true)));
       const directReference = [{ name: candidate.sourceName, url: candidate.sourceUrl }, ...references].find((reference) => isSpecificEventSourceUrl(reference.url));
+      if (!directReference) continue;
       const saved = await saveCandidate({
         ...candidate,
         categorySlug: expectedCategory ?? candidate.categorySlug,
