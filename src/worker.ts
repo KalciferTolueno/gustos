@@ -1,6 +1,6 @@
 import { runDiscoveryAgent } from "./lib/agent";
 import { ensureScheduledCoverage, nextDueQuery, recoverStaleQueries } from "./lib/discovery-queries";
-import { backfillMissingEventImages } from "./lib/event-images";
+import { auditEventImages, backfillMissingEventImages } from "./lib/event-images";
 import { consolidateDuplicateEvents, promoteSpecificEventSources } from "./lib/events";
 import { ensureCanonicalTaxonomy, type CategorySlug } from "./lib/taxonomy";
 import { verifyNextEvent } from "./lib/verification";
@@ -43,6 +43,7 @@ async function run() {
     }
     if (!handled) console.log("no discovery query is due");
     console.log(await backfillMissingEventImages(imagesPerRun));
+    console.log(await auditEventImages(Math.max(1, Math.floor(imagesPerRun / 4))));
   } catch (error) {
     console.error(new Date().toISOString(), error);
   } finally {
