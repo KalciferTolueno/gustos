@@ -25,7 +25,7 @@ export function InterestPicker({ topics, initial }: { topics: InterestTopic[]; i
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3" aria-describedby="interest-picker-description">
       {topics.map((topic) => {
         const isSelected = selected.has(topic.id);
-        return <Button key={topic.id} onClick={() => toggle(topic.id)} aria-pressed={isSelected} variant={isSelected ? "default" : "outline"} className="h-auto min-h-16 whitespace-normal px-3 py-3 text-left">
+        return <Button key={topic.id} onClick={() => toggle(topic.id)} aria-pressed={isSelected} variant={isSelected ? "default" : "outline"} className="interest-choice h-auto min-h-16 whitespace-normal px-3 py-3 text-left">
           {isSelected ? <Check data-icon="inline-start" /> : <Plus data-icon="inline-start" />}{topic.name}
         </Button>;
       })}

@@ -25,7 +25,7 @@ export function SubmitEventForm() {
     setState("sent");
   }
 
-  if (state === "sent") return <div className="grid min-h-52 place-items-center text-center" role="status" aria-live="polite"><div><CheckCircle2 className="mx-auto size-12 text-emerald-400" aria-hidden="true" /><h2 className="mt-4 text-xl font-medium">Evento Recibido</h2><p className="mt-2 text-sm text-zinc-400">Lo revisaremos antes de publicarlo.</p></div></div>;
+  if (state === "sent") return <div className="submission-success grid min-h-52 place-items-center text-center" role="status" aria-live="polite"><div><CheckCircle2 className="mx-auto size-12 text-emerald-400" aria-hidden="true" /><h2 className="mt-4 text-xl font-medium">Evento Recibido</h2><p className="mt-2 text-sm text-zinc-400">Lo revisaremos antes de publicarlo.</p></div></div>;
   return <form action={submit} className="inline-event-form" aria-describedby="event-form-help">
     <p id="event-form-help" className="text-sm leading-6 text-zinc-400">Los campos marcados como obligatorios nos ayudan a verificar el evento antes de publicarlo.</p>
     <label>Título<input name="title" autoComplete="off" required minLength={4} maxLength={160} /></label>

@@ -16,6 +16,7 @@ import {
   Heart,
   Layers3,
   ListFilter,
+  LoaderCircle,
   Map,
   MapPin,
   Plus,
@@ -216,7 +217,7 @@ export function Dashboard({ events, demo, signedIn, userName, interestTopics, in
               <MapPin className="size-4 shrink-0 text-zinc-500" aria-hidden="true" />
               <Select value={city} onValueChange={(value) => { setCity(value); setPage(1); }}><SelectTrigger aria-label="Filtrar por ciudad" className="h-11 border-0 px-0 text-zinc-300 shadow-none"><SelectValue /></SelectTrigger><SelectContent>{cities.map((item) => <SelectItem value={item} key={item}>{item}</SelectItem>)}</SelectContent></Select>
             </div>
-            <Button type="submit" size="lg" disabled={searching} className="rounded-xl md:rounded-full"><Search data-icon="inline-start" /> {searching ? "Buscando…" : "Buscar"}</Button>
+            <Button type="submit" size="lg" disabled={searching} className="rounded-xl md:rounded-full">{searching ? <LoaderCircle className="animate-spin" data-icon="inline-start" /> : <Search data-icon="inline-start" />} {searching ? "Buscando…" : "Buscar"}</Button>
           </form>
           {searchMessage && <p className="mt-4 text-sm text-zinc-400" role="status" aria-live="polite">{searchMessage}</p>}
         </section>
@@ -241,7 +242,7 @@ export function Dashboard({ events, demo, signedIn, userName, interestTopics, in
             </div>
           </div>
 
-          {!filtered.length ? <EmptyState query={deferredQuery} onReset={resetFilters} /> : <><TabsContent value="list"><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">{visibleEvents.map((event, index) => <EventTile key={event.id} event={event} index={index} onOpen={() => openEvent(event)} />)}</div></TabsContent><TabsContent value="map"><EventMap events={visibleEvents} /></TabsContent><EventPagination currentPage={currentPage} pageSize={pageSize} total={filtered.length} totalPages={totalPages} onPageChange={changePage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); scrollToEvents(); }} /></>}
+          {!filtered.length ? <EmptyState query={deferredQuery} onReset={resetFilters} /> : <><TabsContent value="list" className="view-panel"><div key={`${topic}-${subtopic}-${city}-${currentPage}-${discoveredEventIds.join("-")}`} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">{visibleEvents.map((event, index) => <EventTile key={event.id} event={event} index={index} onOpen={() => openEvent(event)} />)}</div></TabsContent><TabsContent value="map" className="view-panel"><EventMap events={visibleEvents} /></TabsContent><EventPagination currentPage={currentPage} pageSize={pageSize} total={filtered.length} totalPages={totalPages} onPageChange={changePage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); scrollToEvents(); }} /></>}
         </Tabs>
       </div>
 
@@ -295,7 +296,7 @@ function EventTile({ event, index, onOpen }: { event: EventCard; index: number; 
   const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
   const image = event.imageUrl && event.imageUrl !== failedImageUrl ? event.imageUrl : null;
   return (
-    <Card className="event-tile gap-0 overflow-hidden rounded-3xl" style={{ "--tile-hue": `${190 + (index % 5) * 28}` } as React.CSSProperties}>
+    <Card className="event-tile gap-0 overflow-hidden rounded-3xl" style={{ "--tile-hue": `${190 + (index % 5) * 28}`, "--entry-delay": `${Math.min(index, 4) * 45}ms` } as React.CSSProperties}>
       <div className="event-visual relative h-64 overflow-hidden">
         {image && <Image src={image} alt="" fill unoptimized priority={index === 0} sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 20vw" className="z-0 object-cover" onError={() => setFailedImageUrl(image)} />}
         {!image && <EventImageFallback categoryName={event.categoryName} />}
