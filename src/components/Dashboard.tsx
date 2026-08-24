@@ -201,11 +201,8 @@ export function Dashboard({ events, demo, signedIn, userName, interestTopics, in
           <Button variant="outline" className="max-w-[115px] overflow-hidden sm:max-w-none" onClick={() => setPanel(signedIn ? "interests" : "account")}><UserRound /> {userName ?? "Ingresar"}</Button>
         </header>
 
-        <section className="mx-auto max-w-4xl pb-12 pt-16 text-center sm:pt-24">
-          <Badge variant="outline" className="gap-2 px-3 py-1.5 text-zinc-300">
-            <i className="size-1.5 rounded-full bg-emerald-400" />{events.length} panoramas en Chile
-          </Badge>
-          <h1 className="mt-5 text-balance text-4xl font-medium tracking-[-0.04em] sm:text-6xl">Tu próximo panorama está acá</h1>
+        <section className="mx-auto max-w-4xl pb-8 pt-10 text-center sm:pb-10 sm:pt-14">
+          <h1 className="text-balance text-4xl font-medium tracking-[-0.04em] sm:text-6xl">Tu próximo panorama está acá</h1>
           <p className="mx-auto mt-4 max-w-2xl text-pretty text-base leading-7 text-zinc-400 sm:text-lg">
             {userName ? `Hola, ${userName}. Descubre eventos según lo que realmente te gusta.` : "Explora gratis como invitado. Busca artistas, comunidades, juegos, anime y eventos futuros en Chile."}
           </p>
