@@ -190,7 +190,7 @@ export function Dashboard({ events, demo, signedIn, userName, interestTopics, in
         <header className="site-header sticky top-4 z-40 flex min-h-16 items-center justify-between px-3 sm:px-4">
           <Link href="/" className="site-brand" aria-label="Datito, inicio">
             <span className="site-brand-mark"><Layers3 aria-hidden="true" /></span>
-            <span className="site-brand-copy"><strong>Datito</strong><small>Panoramas en Chile</small></span>
+            <strong>Datito</strong>
           </Link>
           <nav className="site-nav hidden items-center md:flex" aria-label="Navegación principal">
             <Button variant="ghost" className={view === "list" ? "active" : undefined} onClick={showList}><Compass /> Explorar</Button>
@@ -270,20 +270,20 @@ function EventPagination({ currentPage, pageSize, total, totalPages, onPageChang
   const numberedPages = Array.from({ length: totalPages }, (_, index) => index + 1).filter((item) => item === 1 || item === totalPages || Math.abs(item - currentPage) <= 1);
 
   return (
-    <nav aria-label="Paginación de eventos" className="mt-8 flex flex-col gap-4 rounded-2xl border border-white/10 bg-white/[.035] p-4 sm:flex-row sm:items-center sm:justify-between">
-      <p className="text-sm tabular-nums text-zinc-400" aria-live="polite">Mostrando <b className="font-medium text-zinc-200">{firstResult}–{lastResult}</b> de {total}</p>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="flex items-center justify-between gap-3 text-sm text-zinc-400 sm:justify-start">
+    <nav aria-label="Paginación de eventos" className="mt-10 flex flex-col gap-5 px-1 sm:flex-row sm:items-center sm:justify-between">
+      <p className="text-sm font-medium tabular-nums text-zinc-300" aria-live="polite">Mostrando <b className="font-semibold text-zinc-100">{firstResult}–{lastResult}</b> <span className="font-normal text-zinc-500">de {total}</span></p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-5">
+        <div className="flex items-center justify-between gap-3 text-sm font-medium text-zinc-300 sm:justify-start">
           Eventos por página
           <Select value={String(pageSize)} onValueChange={(value) => onPageSizeChange(Number(value) as (typeof pageSizes)[number])}>
-            <SelectTrigger aria-label="Eventos por página" className="w-24 bg-black/15 tabular-nums"><SelectValue /></SelectTrigger>
+            <SelectTrigger aria-label="Eventos por página" className="h-10 w-20 rounded-xl bg-transparent tabular-nums"><SelectValue /></SelectTrigger>
             <SelectContent>{pageSizes.map((size) => <SelectItem value={String(size)} key={size}>{size}</SelectItem>)}</SelectContent>
           </Select>
         </div>
         <div className="flex max-w-full items-center justify-start gap-1 overflow-x-auto pb-1 sm:justify-between" aria-label={`Página ${currentPage} de ${totalPages}`}>
-          <Button variant="outline" size="icon" className="size-11" disabled={currentPage === 1} onClick={() => onPageChange(currentPage - 1)} aria-label="Página anterior"><ChevronLeft /></Button>
-          {numberedPages.map((item, index) => <span key={item} className="contents">{index > 0 && item - numberedPages[index - 1] > 1 && <span className="grid size-8 place-items-center text-zinc-500" aria-hidden="true">…</span>}<Button variant={item === currentPage ? "default" : "ghost"} size="icon" className="size-11 tabular-nums" aria-current={item === currentPage ? "page" : undefined} onClick={() => onPageChange(item)} aria-label={`Página ${item}`}>{item}</Button></span>)}
-          <Button variant="outline" size="icon" className="size-11" disabled={currentPage === totalPages} onClick={() => onPageChange(currentPage + 1)} aria-label="Página siguiente"><ChevronRight /></Button>
+          <Button variant="ghost" size="icon" className="size-10 rounded-xl text-zinc-400" disabled={currentPage === 1} onClick={() => onPageChange(currentPage - 1)} aria-label="Página anterior"><ChevronLeft /></Button>
+          {numberedPages.map((item, index) => <span key={item} className="contents">{index > 0 && item - numberedPages[index - 1] > 1 && <span className="grid size-8 place-items-center text-zinc-500" aria-hidden="true">…</span>}<Button variant={item === currentPage ? "default" : "ghost"} size="icon" className="size-10 rounded-xl text-sm tabular-nums" aria-current={item === currentPage ? "page" : undefined} onClick={() => onPageChange(item)} aria-label={`Página ${item}`}>{item}</Button></span>)}
+          <Button variant="ghost" size="icon" className="size-10 rounded-xl text-zinc-400" disabled={currentPage === totalPages} onClick={() => onPageChange(currentPage + 1)} aria-label="Página siguiente"><ChevronRight /></Button>
         </div>
       </div>
     </nav>
