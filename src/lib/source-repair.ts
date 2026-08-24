@@ -24,7 +24,7 @@ export async function repairGenericEventSources(limit = 4) {
   let checked = 0;
   let repaired = 0;
   for (const event of rows) {
-    if (isSpecificEventSourceUrl(event.sourceUrl)) continue;
+    if (isSpecificEventSourceUrl(event.sourceUrl, event.title)) continue;
     const reservation = await beginAgentRun("source-repair", event.title);
     if (reservation.skipped) break;
     let searches = 0;
@@ -46,7 +46,7 @@ export async function repairGenericEventSources(limit = 4) {
       const result = resultSchema.parse(JSON.parse(response.output_text));
       const consulted = new Set([...consultedWebUrls(response.output)].map((url) => normalizedSourceUrl(url, true)));
       const sourceUrl = normalizedSourceUrl(result.sourceUrl);
-      if (!isSpecificEventSourceUrl(result.sourceUrl) || !consulted.has(normalizedSourceUrl(result.sourceUrl, true))) throw new Error("Repair source was not consulted or is generic");
+      if (!isSpecificEventSourceUrl(result.sourceUrl, event.title) || !consulted.has(normalizedSourceUrl(result.sourceUrl, true))) throw new Error("Repair source was not consulted or is generic");
       await db.transaction(async (tx) => {
         await tx.update(events).set({ sourceName: result.sourceName, sourceUrl: result.sourceUrl, updatedAt: new Date() }).where(eq(events.id, event.id));
         await tx.update(eventSources).set({ isPrimary: false }).where(eq(eventSources.eventId, event.id));

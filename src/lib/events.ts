@@ -180,13 +180,24 @@ export function normalizedSourceUrl(value: string, stripTracking = false) {
   }
 }
 
-export function isSpecificEventSourceUrl(value: string) {
+function dedicatedEventDomain(host: string, eventTitle?: string) {
+  if (!eventTitle) return false;
+  const labels = host.split(".");
+  const countrySuffix = labels.at(-1)?.length === 2 && ["co", "com", "net", "org"].includes(labels.at(-2) ?? "");
+  const domainLabel = labels.at(countrySuffix ? -3 : -2) ?? labels[0] ?? "";
+  const compactDomain = normalizedText(domainLabel).replace(/\s+/g, "");
+  const compactTitle = normalizedText(eventTitle).replace(/\s+/g, "");
+  return compactDomain.length >= 5 && compactTitle.includes(compactDomain);
+}
+
+export function isSpecificEventSourceUrl(value: string, eventTitle?: string) {
   try {
     const url = new URL(value);
     const path = url.pathname.replace(/\/$/, "").toLocaleLowerCase("en-US");
     const host = url.hostname.replace(/^www\./, "").toLocaleLowerCase("en-US");
     if (host === "puntoticket.com" && ["/", "/todos", "/inicio", "/home"].includes(path || "/")) return false;
-    return Boolean(url.search || (path && !["/", "/inicio", "/home", "/index"].includes(path)));
+    if (!["", "/", "/inicio", "/home", "/index"].includes(path)) return true;
+    return dedicatedEventDomain(host, eventTitle);
   } catch {
     return false;
   }
@@ -368,12 +379,12 @@ export async function consolidateDuplicateEvents(limit = Number.POSITIVE_INFINIT
 
 export async function promoteSpecificEventSources(limit = 24) {
   const db = getDb();
-  const rows = await db.select({ id: events.id, sourceUrl: events.sourceUrl }).from(events).where(eq(events.status, "published")).orderBy(asc(events.updatedAt)).limit(limit * 4);
+  const rows = await db.select({ id: events.id, title: events.title, sourceUrl: events.sourceUrl }).from(events).where(eq(events.status, "published")).orderBy(asc(events.updatedAt)).limit(limit * 4);
   let upgraded = 0;
   for (const event of rows) {
-    if (isSpecificEventSourceUrl(event.sourceUrl)) continue;
+    if (isSpecificEventSourceUrl(event.sourceUrl, event.title)) continue;
     const sourcesForEvent = await db.select({ name: eventSources.name, url: eventSources.url }).from(eventSources).where(eq(eventSources.eventId, event.id)).orderBy(desc(eventSources.isPrimary), asc(eventSources.firstSeenAt)).limit(4);
-    const directSource = sourcesForEvent.find((source) => isSpecificEventSourceUrl(source.url));
+    const directSource = sourcesForEvent.find((source) => isSpecificEventSourceUrl(source.url, event.title));
     if (!directSource) continue;
     await db.update(events).set({ sourceName: directSource.name, sourceUrl: directSource.url, updatedAt: new Date() }).where(eq(events.id, event.id));
     upgraded += 1;
@@ -461,7 +472,7 @@ export async function saveCandidate(candidate: {
     const [existing] = existingId ? await tx.select({ status: events.status, identityKey: events.identityKey, imageUrl: events.imageUrl, categoryId: events.categoryId, timePrecision: events.timePrecision, city: events.city, region: events.region, venue: events.venue, address: events.address, sourceName: events.sourceName, sourceUrl: events.sourceUrl }).from(events).where(eq(events.id, existingId)).limit(1) : [];
     const existingIdentity = existing?.status !== "pending" && existing?.identityKey ? existing.identityKey : !identityMatch || identityMatch.id === existingId ? identityKey : null;
     const candidateHasExactTime = existing?.timePrecision === "date" && candidate.timePrecision === "exact";
-    const shouldUpgradeSource = Boolean(existing && isSpecificEventSourceUrl(candidate.sourceUrl) && !isSpecificEventSourceUrl(existing.sourceUrl));
+    const shouldUpgradeSource = Boolean(existing && isSpecificEventSourceUrl(candidate.sourceUrl, candidate.title) && !isSpecificEventSourceUrl(existing.sourceUrl, candidate.title));
     const [saved] = existing
       ? await tx.update(events).set(existing.status === "pending"
         ? { ...event, externalKey, identityKey: existingIdentity, categoryId: category.id, status, verifiedAt: now, updatedAt: now }

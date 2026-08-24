@@ -92,6 +92,40 @@ async function requestPage(value: string) {
   });
 }
 
+async function requestImageHeaders(value: string) {
+  const { url, address } = await publicUrl(value);
+  return new Promise<{ url: URL; status: number; location?: string; contentType?: string; contentLength: number }>((resolve, reject) => {
+    const options = { hostname: address, port: url.port || undefined, path: `${url.pathname}${url.search}`, method: "HEAD", headers: { host: url.host, "user-agent": "Mozilla/5.0 (compatible; DatitoEventBot/1.0)" }, signal: AbortSignal.timeout(8_000) };
+    const request = url.protocol === "https:" ? httpsRequest({ ...options, servername: url.hostname }) : httpRequest(options);
+    request.on("response", (response) => {
+      response.resume();
+      resolve({
+        url,
+        status: response.statusCode ?? 0,
+        location: response.headers.location,
+        contentType: response.headers["content-type"],
+        contentLength: Number(response.headers["content-length"] ?? 0),
+      });
+    });
+    request.on("error", reject);
+    request.end();
+  });
+}
+
+async function usablePublicImage(value: string) {
+  let url = value;
+  for (let redirects = 0; redirects < 4; redirects += 1) {
+    const response = await requestImageHeaders(url);
+    if (response.status >= 300 && response.status < 400 && response.location) {
+      url = new URL(response.location, response.url).toString();
+      continue;
+    }
+    const supportedType = /^image\/(?:avif|jpeg|png|webp)(?:;|$)/i.test(response.contentType ?? "");
+    return response.status >= 200 && response.status < 300 && supportedType && response.contentLength <= 20_000_000 ? response.url.toString() : null;
+  }
+  return null;
+}
+
 export async function findEventPageImages(sourceUrl: string) {
   let url = sourceUrl;
   for (let redirects = 0; redirects < 4; redirects += 1) {
@@ -103,7 +137,7 @@ export async function findEventPageImages(sourceUrl: string) {
     if (response.status < 200 || response.status >= 300 || !response.contentType?.includes("text/html")) return [];
     const images = extractEventImages(response.html, response.url.toString());
     const safeImages = await Promise.all(images.map(async (image) => {
-      try { await publicUrl(image); return image; } catch { return null; }
+      try { return await usablePublicImage(image); } catch { return null; }
     }));
     return safeImages.filter((image): image is string => Boolean(image));
   }
@@ -115,13 +149,16 @@ export async function findEventPageImage(sourceUrl: string) {
 }
 
 export async function selectMatchingEventImage(title: string, sourceUrls: string[], existingImage?: string | null) {
-  const directSourceUrls = sourceUrls.filter(isSpecificEventSourceUrl).slice(0, 4);
+  const directSourceUrls = sourceUrls.filter((url) => isSpecificEventSourceUrl(url, title)).slice(0, 4);
   if (!directSourceUrls.length) return null;
   const pages = await Promise.allSettled(directSourceUrls.map(findEventPageImages));
   const pageImages = pages.map((page) => page.status === "fulfilled" ? page.value : []);
   const candidates: string[] = [];
   if (existingImage) {
-    try { await publicUrl(existingImage); candidates.push(existingImage); } catch { /* Ignore an unsafe stored URL. */ }
+    try {
+      const usableImage = await usablePublicImage(existingImage);
+      if (usableImage) candidates.push(usableImage);
+    } catch { /* Ignore an unsafe or unavailable stored URL. */ }
   }
   for (let index = 0; candidates.length < 12 && pageImages.some((images) => index < images.length); index += 1) {
     for (const images of pageImages) if (candidates.length < 12 && images[index] && !candidates.includes(images[index])) candidates.push(images[index]);
@@ -152,9 +189,9 @@ export async function selectMatchingEventImage(title: string, sourceUrls: string
     searches = response.output.filter((item) => item.type === "web_search_call").length;
     usage = agentUsage(response.usage, searches);
     const selected = JSON.parse(response.output_text).imageUrl as string | null;
-    if (selected) await publicUrl(selected);
+    const usableSelection = selected ? await usablePublicImage(selected) : null;
     await finishAgentRun(reservation.runId, { status: "succeeded", searches, candidates: candidates.length, published: 0, ...usage });
-    return candidates.length ? selected && candidates.includes(selected) ? selected : null : selected;
+    return candidates.length ? usableSelection && candidates.includes(usableSelection) ? usableSelection : null : usableSelection;
   } catch (error) {
     await finishAgentRun(reservation.runId, { status: "failed", searches, ...usage, error: error instanceof Error ? error.message.slice(0, 2000) : "Image selection failed" });
     return null;
