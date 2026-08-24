@@ -57,10 +57,10 @@ button:not(:disabled), [role="button"]:not(:disabled) { cursor: pointer; }
 .site-brand-mark { position: relative; display: grid; width: 38px; height: 38px; flex: 0 0 auto; place-items: center; overflow: hidden; border: 1px solid rgba(217,255,129,.26); border-radius: 12px; color: #d9ff81; background: #1b1e18; box-shadow: inset 0 1px rgba(255,255,255,.08); }
 .site-brand-mark:after { content: ""; position: absolute; right: -6px; bottom: -6px; width: 16px; height: 16px; border: 4px solid #d9ff81; border-radius: 50%; opacity: .28; }
 .site-brand-mark svg { position: relative; z-index: 1; width: 17px; height: 17px; }
-.event-tile { animation: event-arrive 520ms var(--motion-ease) both; animation-delay: var(--entry-delay, 0ms); transition: transform 180ms var(--motion-ease), border-color 180ms ease, box-shadow 180ms ease; }
-.event-tile:hover, .event-tile:focus-within { transform: translateY(-4px); border-color: rgba(217,255,129,.38); box-shadow: 0 24px 48px rgba(0,0,0,.34); }
-.event-tile .event-visual > img, .event-tile .event-placeholder { transition: transform 420ms var(--motion-ease), filter 420ms ease; }
-.event-tile:hover .event-visual > img, .event-tile:focus-within .event-visual > img, .event-tile:hover .event-placeholder, .event-tile:focus-within .event-placeholder { transform: scale(1.025); filter: saturate(1.06); }
+.event-tile { animation: event-arrive 520ms var(--motion-ease) both; animation-delay: var(--entry-delay, 0ms); transition: border-color 180ms ease, box-shadow 180ms ease; }
+.event-tile:hover, .event-tile:focus-within { border-color: rgba(217,255,129,.38); box-shadow: 0 20px 42px rgba(0,0,0,.3); }
+.event-tile .event-visual > img, .event-tile .event-placeholder { transition: transform 420ms var(--motion-ease); }
+.event-tile:hover .event-visual > img, .event-tile:focus-within .event-visual > img, .event-tile:hover .event-placeholder, .event-tile:focus-within .event-placeholder { transform: scale(1.018); }
 .event-visual { background-color: hsl(var(--tile-hue) 22% 12%); }
 .event-visual:before, .event-detail-visual:before { content: ""; position: absolute; z-index: 1; inset: 0; background: linear-gradient(to top, rgba(0,0,0,.96), rgba(0,0,0,.7) 46%, rgba(0,0,0,.05) 100%); }
 .event-placeholder { position: absolute; inset: 0; overflow: hidden; color: hsl(var(--fallback-hue) 78% 67%); background: linear-gradient(145deg, hsl(var(--fallback-hue) 42% 17%), #090a0c 72%); }
@@ -473,7 +473,6 @@ button:not(:disabled), [role="button"]:not(:disabled) { cursor: pointer; }
   html { scroll-behavior: auto; }
   .event-tile, .event-tile .event-visual > img, .event-tile .event-placeholder, .skip-link, .auth-form > button { transition: none; }
   .event-tile, .view-panel, .interest-choice, .submission-success > div, .dialog-overlay, .dialog-content { animation: none; }
-  .event-tile:hover, .event-tile:focus-within { transform: none; }
-  .event-tile:hover .event-visual > img, .event-tile:focus-within .event-visual > img, .event-tile:hover .event-placeholder, .event-tile:focus-within .event-placeholder { transform: none; filter: none; }
+  .event-tile:hover .event-visual > img, .event-tile:focus-within .event-visual > img, .event-tile:hover .event-placeholder, .event-tile:focus-within .event-placeholder { transform: none; }
   .auth-form > button:hover:not(:disabled) { transform: none; }
 }

@@ -3,21 +3,23 @@ import { Dashboard } from "@/components/Dashboard";
 import { auth } from "@/auth";
 import { asc, eq } from "drizzle-orm";
 import { getDb } from "@/db";
-import { topics, userInterests } from "@/db/schema";
+import { topics, userInterests, users } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
   const [data, session] = await Promise.all([listEvents(), auth()]);
-  const [interestTopics, selectedInterests] = process.env.DATABASE_URL && session?.user?.id
+  const [interestTopics, selectedInterests, viewer] = process.env.DATABASE_URL && session?.user?.id
     ? await Promise.all([
       getDb().select({ id: topics.id, name: topics.name, type: topics.type }).from(topics).orderBy(asc(topics.name)),
       getDb().select({ id: userInterests.topicId }).from(userInterests).where(eq(userInterests.userId, session.user.id)),
+      getDb().select({ role: users.role }).from(users).where(eq(users.id, session.user.id)).limit(1).then(([user]) => user ?? null),
     ])
-    : [[], []];
+    : [[], [], null];
   return <Dashboard
     {...data}
     signedIn={Boolean(session?.user?.id)}
+    isAdmin={viewer?.role === "admin"}
     userName={session?.user?.name ?? session?.user?.email}
     interestTopics={interestTopics}
     initialInterests={selectedInterests.map((topic) => topic.id)}

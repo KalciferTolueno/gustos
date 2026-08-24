@@ -55,6 +55,7 @@ type DashboardProps = {
   events: EventCard[];
   demo: boolean;
   signedIn: boolean;
+  isAdmin: boolean;
   userName?: string | null;
   interestTopics: InterestTopic[];
   initialInterests: number[];
@@ -75,7 +76,7 @@ type EventDetailData = {
   }>;
 };
 
-export function Dashboard({ events, demo, signedIn, userName, interestTopics, initialInterests, google, discord }: DashboardProps) {
+export function Dashboard({ events, demo, signedIn, isAdmin, userName, interestTopics, initialInterests, google, discord }: DashboardProps) {
   const router = useRouter();
   const [view, setView] = useState<"list" | "map">("list");
   const [query, setQuery] = useState("");
@@ -242,7 +243,7 @@ export function Dashboard({ events, demo, signedIn, userName, interestTopics, in
             </div>
           </div>
 
-          {!filtered.length ? <EmptyState query={deferredQuery} onReset={resetFilters} /> : <><TabsContent value="list" className="view-panel"><div key={`${topic}-${subtopic}-${city}-${currentPage}-${discoveredEventIds.join("-")}`} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">{visibleEvents.map((event, index) => <EventTile key={event.id} event={event} index={index} onOpen={() => openEvent(event)} />)}</div></TabsContent><TabsContent value="map" className="view-panel"><EventMap events={visibleEvents} /></TabsContent><EventPagination currentPage={currentPage} pageSize={pageSize} total={filtered.length} totalPages={totalPages} onPageChange={changePage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); scrollToEvents(); }} /></>}
+          {!filtered.length ? <EmptyState query={deferredQuery} onReset={resetFilters} /> : <><TabsContent value="list" className="view-panel"><div key={`${topic}-${subtopic}-${city}-${currentPage}-${discoveredEventIds.join("-")}`} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">{visibleEvents.map((event, index) => <EventTile key={event.id} event={event} index={index} isAdmin={isAdmin} onOpen={() => openEvent(event)} />)}</div></TabsContent><TabsContent value="map" className="view-panel"><EventMap events={visibleEvents} /></TabsContent><EventPagination currentPage={currentPage} pageSize={pageSize} total={filtered.length} totalPages={totalPages} onPageChange={changePage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); scrollToEvents(); }} /></>}
         </Tabs>
       </div>
 
@@ -291,7 +292,7 @@ function EventPagination({ currentPage, pageSize, total, totalPages, onPageChang
   );
 }
 
-function EventTile({ event, index, onOpen }: { event: EventCard; index: number; onOpen: () => void }) {
+function EventTile({ event, index, isAdmin, onOpen }: { event: EventCard; index: number; isAdmin: boolean; onOpen: () => void }) {
   const date = new Date(event.startsAt);
   const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
   const image = event.imageUrl && event.imageUrl !== failedImageUrl ? event.imageUrl : null;
@@ -301,15 +302,15 @@ function EventTile({ event, index, onOpen }: { event: EventCard; index: number; 
         {image && <Image src={image} alt="" fill unoptimized priority={index === 0} sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 20vw" className="z-0 object-cover" onError={() => setFailedImageUrl(image)} />}
         {!image && <EventImageFallback categoryName={event.categoryName} />}
         <Badge className="absolute left-3 top-3 z-10 bg-black/55 text-zinc-100 backdrop-blur-md">{dateFormatter.format(date)}</Badge>
-        <Badge variant="outline" className="absolute right-3 top-3 z-10 bg-black/45 text-zinc-200 backdrop-blur-md">{event.eventState === "scheduled" ? `${event.confidence}% confianza` : eventStateLabels[event.eventState]}</Badge>
+        <Badge variant="outline" className="absolute right-3 top-3 z-10 bg-black/55 text-zinc-100 backdrop-blur-md">{isAdmin ? (event.eventState === "scheduled" ? `${event.confidence}% confianza` : eventStateLabels[event.eventState]) : event.categoryName}</Badge>
         <div className="absolute inset-x-0 bottom-0 z-10 p-4">
           <h2 className="line-clamp-2 text-lg font-semibold leading-tight tracking-tight text-white">{event.title}</h2>
           <p className="mt-2 line-clamp-3 text-xs leading-5 text-zinc-200">{event.description}</p>
         </div>
       </div>
       <CardContent className="p-4">
-        <div className="mb-4"><Badge variant="secondary">{event.categoryName}</Badge></div>
-        <div className="grid gap-2 border-t border-white/8 pt-4 text-xs text-zinc-400">
+        {isAdmin && <div className="mb-4"><Badge variant="secondary">{event.categoryName}</Badge></div>}
+        <div className={isAdmin ? "grid gap-2 border-t border-white/8 pt-4 text-xs text-zinc-400" : "grid gap-2 text-xs text-zinc-400"}>
           <span className="flex items-center gap-2"><CalendarDays className="size-4" />{formatEventSchedule(event)}</span>
           <span className="flex items-center gap-2"><MapPin className="size-4" />{event.city ?? "Chile"}{event.venue ? ` · ${event.venue}` : ""}</span>
           {event.priceLabel && <span className="flex items-center gap-2"><Ticket className="size-4" />{event.priceLabel}</span>}
