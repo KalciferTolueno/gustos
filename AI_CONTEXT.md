@@ -63,7 +63,7 @@ Mantener una sola réplica del worker. `beginAgentRun()` también usa un bloqueo
 
 ## Cobertura autónoma
 
-`src/lib/discovery-queries.ts` crea una matriz persistente de 20 familias temáticas por 16 regiones de Chile. Cada consulta cubre una ventana móvil de los próximos 12 meses.
+`src/lib/discovery-queries.ts` crea una matriz persistente de 20 familias temáticas por 16 regiones de Chile y el trimestre actual más los cuatro siguientes. Cada consulta tiene un rango de fechas explícito; esto cubre al menos los próximos 12 meses incluso a mitad de trimestre y permite búsquedas más profundas que una única ventana anual amplia.
 
 Categorías raíz:
 
@@ -212,10 +212,10 @@ Esenciales:
 Control del agente:
 
 - `AGENT_ENABLED=false` desactiva nuevas ejecuciones.
-- `AGENT_INTERVAL_MINUTES` controla el ciclo del worker.
+- `AGENT_INTERVAL_MINUTES` controla el ciclo del worker (15 minutos por defecto).
 - `AGENT_SEARCHES_PER_DAY` y `AGENT_SEARCHES_PER_MONTH`: `0` significa sin límite.
-- `AGENT_BOOTSTRAP_SEARCHES_PER_DAY` controla la carga inicial.
-- `AGENT_SEARCHES_PER_RUN`, `AGENT_SEARCHES_PER_QUERY`, `AGENT_SEARCHES_PER_COVERAGE_QUERY` controlan llamadas por ejecución.
+- `AGENT_BOOTSTRAP_SEARCHES_PER_DAY`: `0` también significa sin límite durante la carga inicial.
+- `AGENT_SEARCHES_PER_RUN`, `AGENT_SEARCHES_PER_QUERY`, `AGENT_SEARCHES_PER_COVERAGE_QUERY`, `AGENT_QUERIES_PER_RUN`, `AGENT_IMAGES_PER_RUN` y `AGENT_IMAGE_SEARCHES_PER_EVENT` controlan la intensidad de cada ciclo.
 - Las tarifas `OPENAI_*_USD_*` alimentan el costo estimado del panel; deben reflejar el modelo/proveedor real.
 
 Los límites de Datito no reemplazan el límite de gasto configurado en OpenAI.
@@ -262,7 +262,7 @@ EasyPanel despliega `main` desde `git@github.com:KalciferTolueno/gustos.git`. El
 
 - Nombre público: Datito.
 - Mantener el nombre histórico de repo/base hasta planificar una migración.
-- Ventana de cobertura móvil: 12 meses, no fechas fijas.
+- Cobertura nacional: trimestre actual más los cuatro siguientes, con fechas explícitas.
 - Una salida fechada de un tour es un evento; itinerario/destinos son temas y descripción.
 - La hora/minuto sigue siendo significativa para títulos exactamente iguales.
 - Las variantes con subtítulo pueden unirse por día para tolerar discrepancias entre fuentes.
@@ -277,7 +277,7 @@ EasyPanel despliega `main` desde `git@github.com:KalciferTolueno/gustos.git`. El
 
 - Catálogo autónomo, fuentes, observaciones, búsqueda y verificación.
 - Tarjetas con imágenes oficiales y cinco columnas en escritorio.
-- Taxonomía jerárquica, cobertura nacional de 12 meses y refresco adaptativo.
+- Taxonomía jerárquica, cobertura nacional trimestral y refresco adaptativo.
 - Telemetría de búsquedas/tokens/costos y panel administrativo.
 - Cambio de marca de Gustos a Datito.
 - Consolidación de duplicados con hasta cuatro fuentes visibles.

@@ -139,7 +139,7 @@ export async function selectMatchingEventImage(title: string, sourceUrls: string
       tools: [{ type: "web_search", search_context_size: "medium", user_location: { type: "approximate", country: "CL", timezone: "America/Santiago" } }],
       tool_choice: "required",
       // @ts-expect-error OpenAI accepts this field, but this SDK release omits it from request types.
-      max_tool_calls: 2,
+      max_tool_calls: Math.max(1, Number(process.env.AGENT_IMAGE_SEARCHES_PER_EVENT ?? 4)),
       input: `Busca un afiche, banner o fotografía real y específica del evento ${JSON.stringify(title)}. Revisa primero estas páginas: ${sourceUrls.join(", ")}. Devuelve la URL pública directa de una imagen que haga match inequívoco con el nombre del evento; nunca uses stock, logos genéricos ni imágenes de otro evento.`,
       text: { format: { type: "json_schema", name: "event_image_search", strict: true, schema: { type: "object", additionalProperties: false, properties: { imageUrl: { type: ["string", "null"] } }, required: ["imageUrl"] } } },
     });

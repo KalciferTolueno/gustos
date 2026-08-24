@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, gte, lte, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, lte, ne, notInArray, or, sql } from "drizzle-orm";
 import { getDb } from "../db";
 import { agentRuns, discoveryQueries, discoveryQueryEvents, events } from "../db/schema";
 import type { CategorySlug } from "./taxonomy";
@@ -32,6 +32,32 @@ const coverageFamilies: Array<{ categorySlug: CategorySlug; terms: string }> = [
 
 export function normalizeDiscoveryQuery(value: string) {
   return value.trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("es-CL").replace(/\s+/g, " ");
+}
+
+type CoverageQuery = {
+  normalizedQuery: string;
+  displayQuery: string;
+  kind: "coverage";
+  categorySlug: CategorySlug;
+  region: string;
+};
+
+function isoDate(value: Date) {
+  return value.toISOString().slice(0, 10);
+}
+
+/** The current calendar quarter plus four following ones always covers the next 12 months. */
+export function coverageQueryDefinitions(now = new Date()): CoverageQuery[] {
+  const quarterStartMonth = Math.floor(now.getUTCMonth() / 3) * 3;
+  const windows = Array.from({ length: 5 }, (_, index) => {
+    const start = new Date(Date.UTC(now.getUTCFullYear(), quarterStartMonth + index * 3, 1));
+    const end = new Date(Date.UTC(now.getUTCFullYear(), quarterStartMonth + (index + 1) * 3, 0));
+    return { start: isoDate(start), end: isoDate(end) };
+  });
+  return regions.flatMap((region) => coverageFamilies.flatMap(({ categorySlug, terms }) => windows.map(({ start, end }) => {
+    const displayQuery = `${terms} en la región de ${region}, Chile, entre ${start} y ${end}`;
+    return { normalizedQuery: normalizeDiscoveryQuery(displayQuery), displayQuery, kind: "coverage", categorySlug, region };
+  })));
 }
 
 export async function recordDiscoveryQuery(displayQuery: string) {
@@ -100,15 +126,15 @@ export async function failQuery(id: number, error: unknown) {
 }
 
 export async function ensureScheduledCoverage() {
-  const values = regions.flatMap((region) => coverageFamilies.map(({ categorySlug, terms }) => {
-    const displayQuery = `${terms} en la región de ${region}, Chile, durante los próximos 12 meses`;
-    return { normalizedQuery: normalizeDiscoveryQuery(displayQuery), displayQuery, kind: "coverage", categorySlug, region };
-  }));
+  const values = coverageQueryDefinitions();
   await getDb().insert(discoveryQueries).values(values).onConflictDoUpdate({
     target: discoveryQueries.normalizedQuery,
     set: { kind: "coverage", categorySlug: sql`excluded.category_slug`, region: sql`excluded.region` },
   });
-  await getDb().update(discoveryQueries).set({ status: "archived", nextRefreshAt: new Date("2100-01-01") }).where(eq(discoveryQueries.kind, "music"));
+  await getDb().update(discoveryQueries).set({ status: "archived", nextRefreshAt: new Date("2100-01-01") }).where(and(
+    eq(discoveryQueries.kind, "coverage"),
+    notInArray(discoveryQueries.normalizedQuery, values.map(({ normalizedQuery }) => normalizedQuery)),
+  ));
 }
 
 export async function recoverStaleQueries() {

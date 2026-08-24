@@ -84,8 +84,8 @@ export async function beginAgentRun(kind: string, target?: string) {
   if (!process.env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is required by the discovery agent");
   const db = getDb();
   const bootstrap = await coverageBootstrapPending();
-  const dailyLimit = Number(bootstrap ? process.env.AGENT_BOOTSTRAP_SEARCHES_PER_DAY ?? 100 : process.env.AGENT_SEARCHES_PER_DAY ?? 25);
-  const monthlyLimit = Number(process.env.AGENT_SEARCHES_PER_MONTH ?? 3000);
+  const dailyLimit = Number(bootstrap ? process.env.AGENT_BOOTSTRAP_SEARCHES_PER_DAY ?? 0 : process.env.AGENT_SEARCHES_PER_DAY ?? 0);
+  const monthlyLimit = Number(process.env.AGENT_SEARCHES_PER_MONTH ?? 0);
   const startOfDay = new Date();
   startOfDay.setUTCHours(0, 0, 0, 0);
   const startOfMonth = new Date(Date.UTC(startOfDay.getUTCFullYear(), startOfDay.getUTCMonth(), 1));
@@ -141,7 +141,7 @@ export async function runDiscoveryAgent(query?: string, queryId?: number, queryK
   try {
     const topicNames = query ? [query] : await popularTopics();
     const maxSearches = Math.min(
-      Number(queryKind === "coverage" ? process.env.AGENT_SEARCHES_PER_COVERAGE_QUERY ?? 2 : query ? process.env.AGENT_SEARCHES_PER_QUERY ?? 2 : process.env.AGENT_SEARCHES_PER_RUN ?? 5),
+      Number(queryKind === "coverage" ? process.env.AGENT_SEARCHES_PER_COVERAGE_QUERY ?? 4 : query ? process.env.AGENT_SEARCHES_PER_QUERY ?? 4 : process.env.AGENT_SEARCHES_PER_RUN ?? 12),
       dailyLimit > 0 ? dailyLimit - used : Number.POSITIVE_INFINITY,
       monthlyLimit > 0 ? monthlyLimit - monthlyUsed : Number.POSITIVE_INFINITY,
     );
@@ -174,7 +174,7 @@ export async function runDiscoveryAgent(query?: string, queryId?: number, queryK
         "artistNames contiene todos los artistas, bandas, DJs, elencos o invitados anunciados. destinationNames contiene destinos de tours y viajes. Usa arreglos vacíos cuando no corresponda.",
         "Usa timePrecision=exact solo cuando una fuente publique hora de inicio. Para una fecha confirmada sin hora, usa timePrecision=date, representa startsAt a las 12:00:00Z del día publicado y no inventes una hora. Usa ISO 8601 con zona horaria. Un evento confirmado por una fuente oficial puede tener confidence >= 85 aunque falte la dirección detallada.",
         "No incluyas eventos ya finalizados, noticias, productos ni resultados sin fecha concreta. Para eventos en curso incluye endsAt.",
-        queryKind === "coverage" ? "Busca únicamente dentro de los próximos 12 meses." : "",
+        queryKind === "coverage" ? "Respeta estrictamente el rango de fechas incluido en la consulta. Haz búsquedas complementarias entre organizadores, recintos, ticketera y agendas regionales, sin repetir la misma fuente." : "",
       ].join("\n"),
     });
 

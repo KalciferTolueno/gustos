@@ -5,9 +5,17 @@ import { consolidateDuplicateEvents } from "./lib/events";
 import { ensureCanonicalTaxonomy, type CategorySlug } from "./lib/taxonomy";
 import { verifyNextEvent } from "./lib/verification";
 
-const interval = Math.max(15, Number(process.env.AGENT_INTERVAL_MINUTES ?? 60)) * 60_000;
+const interval = Math.max(15, Number(process.env.AGENT_INTERVAL_MINUTES ?? 15)) * 60_000;
+const queriesPerRun = Math.max(1, Number(process.env.AGENT_QUERIES_PER_RUN ?? 8));
+const imagesPerRun = Math.max(1, Number(process.env.AGENT_IMAGES_PER_RUN ?? 16));
+let running = false;
 
 async function run() {
+  if (running) {
+    console.log(new Date().toISOString(), "discovery is still running; skipping overlapping cycle");
+    return;
+  }
+  running = true;
   try {
     console.log(new Date().toISOString(), "starting discovery");
     await ensureCanonicalTaxonomy();
@@ -15,9 +23,8 @@ async function run() {
     await recoverStaleQueries();
     console.log(await consolidateDuplicateEvents());
     console.log(await verifyNextEvent());
-    console.log(await backfillMissingEventImages(4));
     let handled = false;
-    for (let index = 0; index < 4; index += 1) {
+    for (let index = 0; index < queriesPerRun; index += 1) {
       const query = await nextDueQuery();
       if (!query) break;
       handled = true;
@@ -26,8 +33,11 @@ async function run() {
       if (result.skipped) break;
     }
     if (!handled) console.log("no discovery query is due");
+    console.log(await backfillMissingEventImages(imagesPerRun));
   } catch (error) {
     console.error(new Date().toISOString(), error);
+  } finally {
+    running = false;
   }
 }
 

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { acceptedEventState, eventHasNotEnded, eventIdentityKey, eventKey, normalizedSourceUrl, sameEventOccurrence } from "./events";
 import { matchesEventSearch } from "./event-search";
 import { hashPassword, verifyPassword } from "./passwords";
-import { normalizeDiscoveryQuery, queryIsFresh } from "./discovery-queries";
+import { coverageQueryDefinitions, normalizeDiscoveryQuery, queryIsFresh } from "./discovery-queries";
 import { extractEventImage, extractEventImages } from "./event-images";
 import { agentUsage } from "./agent";
 
@@ -53,6 +53,15 @@ describe("discovery query cache", () => {
     expect(queryIsFresh({ lastRefreshedAt: new Date() })).toBe(true);
     expect(queryIsFresh({ lastRefreshedAt: new Date(Date.now() - 25 * 60 * 60_000) })).toBe(false);
     expect(queryIsFresh({ lastRefreshedAt: new Date(Date.now() - 3 * 60_000), lastResultCount: 0 })).toBe(false);
+  });
+
+  it("splits national coverage into date-specific quarters covering the next year", () => {
+    const queries = coverageQueryDefinitions(new Date("2026-08-24T12:00:00Z"));
+    expect(queries).toHaveLength(16 * 20 * 5);
+    expect(new Set(queries.map((query) => query.normalizedQuery)).size).toBe(queries.length);
+    expect(new Set(queries.map((query) => query.displayQuery.match(/entre (.+)$/)?.[1])).size).toBe(5);
+    expect(queries[0].displayQuery).toContain("entre 2026-07-01 y 2026-09-30");
+    expect(queries.at(-1)?.displayQuery).toContain("entre 2027-07-01 y 2027-09-30");
   });
 });
 
