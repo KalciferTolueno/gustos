@@ -258,6 +258,21 @@ export function sameEventOccurrence(first: { title: string; startsAt: Date; time
     && compatibleVenues;
 }
 
+export function sameSourceOccurrence(first: { startsAt: Date; timePrecision?: string; city?: string | null; venue?: string | null; sourceUrl?: string }, second: { startsAt: Date; timePrecision?: string; city?: string | null; venue?: string | null; sourceUrl?: string }) {
+  if (!first.sourceUrl || !second.sourceUrl || normalizedSourceUrl(first.sourceUrl, true) !== normalizedSourceUrl(second.sourceUrl, true)) return false;
+  const sameDay = first.startsAt.toISOString().slice(0, 10) === second.startsAt.toISOString().slice(0, 10);
+  const sameTime = first.startsAt.toISOString().slice(0, 16) === second.startsAt.toISOString().slice(0, 16);
+  const dateOnly = first.timePrecision === "date" || second.timePrecision === "date";
+  const firstCity = normalizedText(first.city);
+  const secondCity = normalizedText(second.city);
+  const compatibleCities = !firstCity || !secondCity || firstCity === secondCity || (isSantiagoMetroCity(firstCity) && isSantiagoMetroCity(secondCity));
+  return sameDay && (sameTime || dateOnly) && compatibleCities && compatibleLocation(first.venue, second.venue);
+}
+
+export function representativeEventTitle(titles: string[]) {
+  return titles.filter((title) => /\s(?:y|e)\s|&/i.test(title)).sort((a, b) => b.length - a.length)[0] ?? null;
+}
+
 function sameFestivalSeries(first: { title: string; startsAt: Date; city?: string | null; sourceName?: string; sourceUrl?: string }, second: { title: string; startsAt: Date; city?: string | null; sourceName?: string; sourceUrl?: string }) {
   const firstSeries = normalizedText(eventSeriesTitle(first.title));
   const secondSeries = normalizedText(eventSeriesTitle(second.title));
@@ -300,7 +315,7 @@ export async function consolidateDuplicateEvents(limit = Number.POSITIVE_INFINIT
     const clusters: Array<typeof rows> = [];
     const specificFirst = eventsOnSameDay.sort((a, b) => Number(Boolean(b.city)) + Number(Boolean(b.venue)) - Number(Boolean(a.city)) - Number(Boolean(a.venue)));
     for (const event of specificFirst) {
-      const matchingIndexes = clusters.flatMap((cluster, index) => sameEventOccurrence(cluster[0], event) || sameFestivalSeries(cluster[0], event) ? [index] : []);
+      const matchingIndexes = clusters.flatMap((cluster, index) => sameEventOccurrence(cluster[0], event) || sameSourceOccurrence(cluster[0], event) || sameFestivalSeries(cluster[0], event) ? [index] : []);
       if (matchingIndexes.length === 0) {
         clusters.push([event]);
       } else {
@@ -318,7 +333,7 @@ export async function consolidateDuplicateEvents(limit = Number.POSITIVE_INFINIT
     const canonicalCity = keeper.city ?? group.find((event) => event.city)?.city;
     const seriesTitles = group.map((event) => normalizedText(eventSeriesTitle(event.title)));
     const sharedSeries = Boolean(seriesTitles[0]) && seriesTitles.every((title) => title === seriesTitles[0]);
-    const canonicalTitle = sharedSeries ? eventSeriesTitle(keeper.title) : keeper.title;
+    const canonicalTitle = sharedSeries ? eventSeriesTitle(keeper.title) : representativeEventTitle(group.map((event) => event.title)) ?? keeper.title;
     const venueNames = [...new Set(group.map((event) => event.venue).filter((venue): venue is string => Boolean(venue)))];
     const incompatibleVenues = venueNames.some((venue, index) => venueNames.slice(index + 1).some((other) => !compatibleLocation(venue, other)));
     const canonicalVenue = sharedSeries && incompatibleVenues
@@ -455,8 +470,10 @@ export async function saveCandidate(candidate: {
       identityKey: events.identityKey,
       title: events.title,
       startsAt: events.startsAt,
+      timePrecision: events.timePrecision,
       city: events.city,
       venue: events.venue,
+      sourceUrl: eventSources.url,
     }).from(eventSources).innerJoin(events, eq(events.id, eventSources.eventId)).where(eq(eventSources.normalizedUrl, primaryUrl)).limit(1);
     const [identityMatch] = await tx.select({ id: events.id }).from(events).where(eq(events.identityKey, identityKey)).limit(1);
     const [externalMatch] = await tx.select({ id: events.id }).from(events).where(and(eq(events.externalKey, externalKey), eq(events.identityKey, identityKey))).limit(1);
@@ -467,7 +484,7 @@ export async function saveCandidate(candidate: {
     const occurrenceCities = new Set(compatibleOccurrences.map((item) => normalizedText(item.city)).filter(Boolean));
     const occurrenceVenues = new Set(compatibleOccurrences.map((item) => normalizedText(item.venue)).filter(Boolean));
     const occurrenceMatch = (normalizedText(candidate.city) || occurrenceCities.size <= 1) && (normalizedText(candidate.venue) || occurrenceVenues.size <= 1) ? compatibleOccurrences[0] : undefined;
-    const sourceMatches = sourceMatch && sameEventOccurrence(sourceMatch, candidate);
+    const sourceMatches = sourceMatch && (sameEventOccurrence(sourceMatch, candidate) || sameSourceOccurrence(sourceMatch, candidate));
     const existingId = identityMatch?.id ?? externalMatch?.id ?? occurrenceMatch?.id ?? (sourceMatch && sourceMatches ? sourceMatch.eventId : undefined);
     const [existing] = existingId ? await tx.select({ status: events.status, identityKey: events.identityKey, imageUrl: events.imageUrl, categoryId: events.categoryId, timePrecision: events.timePrecision, city: events.city, region: events.region, venue: events.venue, address: events.address, sourceName: events.sourceName, sourceUrl: events.sourceUrl }).from(events).where(eq(events.id, existingId)).limit(1) : [];
     const existingIdentity = existing?.status !== "pending" && existing?.identityKey ? existing.identityKey : !identityMatch || identityMatch.id === existingId ? identityKey : null;

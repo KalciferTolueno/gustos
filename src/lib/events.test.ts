@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { acceptedEventState, eventHasNotEnded, eventIdentityKey, eventKey, isSpecificEventSourceUrl, normalizedSourceUrl, sameEventOccurrence } from "./events";
+import { acceptedEventState, eventHasNotEnded, eventIdentityKey, eventKey, isSpecificEventSourceUrl, normalizedSourceUrl, representativeEventTitle, sameEventOccurrence, sameSourceOccurrence } from "./events";
 import { matchesEventSearch } from "./event-search";
 import { hashPassword, verifyPassword } from "./passwords";
 import { coverageQueryDefinitions, normalizeDiscoveryQuery, queryIsFresh } from "./discovery-queries";
@@ -56,6 +56,16 @@ describe("eventKey", () => {
       { ...occurrence, startsAt: new Date("2027-03-01T16:00:00Z"), timePrecision: "exact", city: "La Florida", venue: "Espacio Vicente Valdés" },
     )).toBe(true);
     expect(sameEventOccurrence({ ...occurrence, startsAt: new Date("2027-03-01T13:00:00Z") }, { ...occurrence, startsAt: new Date("2027-03-01T16:00:00Z") })).toBe(false);
+    const regionalSource = "https://tcgnews.cl/noticia/bandai-card-games-tendra-cinco-regionales-en-chile-durante-septiembre";
+    const regional = { startsAt: new Date("2026-09-12T13:00:00Z"), timePrecision: "exact", city: "Santiago", venue: "Hotel Gran Palace", sourceUrl: regionalSource };
+    expect(sameSourceOccurrence(regional, { ...regional, startsAt: new Date("2026-09-12T12:00:00Z"), timePrecision: "date" })).toBe(true);
+    expect(sameSourceOccurrence(regional, { ...regional, startsAt: new Date("2026-09-13T13:00:00Z") })).toBe(false);
+    expect(sameSourceOccurrence(regional, { ...regional, startsAt: new Date("2026-09-12T16:00:00Z") })).toBe(false);
+    expect(representativeEventTitle([
+      "Dragon Ball Super Card Game: Fusion World Championship 26-27 Regional September Wave 2",
+      "Digimon Card Game 26-27 Regionals September",
+      "Regionales Bandai Card Games — Digimon y Dragon Ball Super Card Game Fusion World",
+    ])).toBe("Regionales Bandai Card Games — Digimon y Dragon Ball Super Card Game Fusion World");
   });
 });
 
