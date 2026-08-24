@@ -5,6 +5,7 @@ import { hashPassword, verifyPassword } from "./passwords";
 import { coverageQueryDefinitions, normalizeDiscoveryQuery, queryIsFresh } from "./discovery-queries";
 import { extractEventImage, extractEventImages } from "./event-images";
 import { agentUsage } from "./agent";
+import { eventMapLocation } from "./event-map-location";
 
 describe("eventKey", () => {
   it("normalizes title whitespace and case", () => {
@@ -134,5 +135,13 @@ describe("matchesEventSearch", () => {
     expect(matchesEventSearch(event, "musica vina")).toBe(true);
     expect(matchesEventSearch(event, "charlotte techno")).toBe(true);
     expect(matchesEventSearch(event, "furry")).toBe(false);
+  });
+});
+
+describe("event map locations", () => {
+  it("uses exact coordinates when available and a labeled city fallback otherwise", () => {
+    expect(eventMapLocation({ id: "exact", city: "Santiago", latitude: -33.45, longitude: -70.66 })).toEqual({ position: [-33.45, -70.66], approximate: false });
+    expect(eventMapLocation({ id: "fallback", city: "Valparaíso" })?.approximate).toBe(true);
+    expect(eventMapLocation({ id: "unknown", city: "En algún lugar" })).toBeNull();
   });
 });

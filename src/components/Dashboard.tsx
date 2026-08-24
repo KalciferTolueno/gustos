@@ -104,6 +104,20 @@ export function Dashboard({ events, demo, signedIn, userName, interestTopics, in
     setDiscoveredEventIds([]);
   }
 
+  function scrollToEvents() {
+    requestAnimationFrame(() => document.querySelector("#eventos")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  }
+
+  function showList() {
+    setView("list");
+    scrollToEvents();
+  }
+
+  function showMap() {
+    setView("map");
+    scrollToEvents();
+  }
+
   async function searchWeb(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     document.querySelector("#eventos")?.scrollIntoView();
@@ -163,8 +177,8 @@ export function Dashboard({ events, demo, signedIn, userName, interestTopics, in
             Datito
           </Link>
           <nav className="hidden items-center gap-1 md:flex" aria-label="Navegación principal">
-            <Button asChild variant="ghost"><a href="#eventos"><Compass /> Explorar</a></Button>
-            <Button variant="ghost" onClick={() => { setView("map"); document.querySelector("#eventos")?.scrollIntoView(); }}><Map /> Mapa</Button>
+            <Button variant="ghost" onClick={showList}><Compass /> Explorar</Button>
+            <Button variant="ghost" onClick={showMap}><Map /> Mapa</Button>
             <Button variant="ghost" onClick={() => setPanel("interests")}><Heart /> Mis intereses</Button>
             <Button variant="ghost" onClick={() => setPanel("submit")}><Plus /> Enviar evento</Button>
           </nav>
@@ -216,8 +230,8 @@ export function Dashboard({ events, demo, signedIn, userName, interestTopics, in
       </div>
 
       <nav className="mobile-glass-nav" aria-label="Navegación móvil">
-        <a href="#eventos"><Compass /><span>Explorar</span></a>
-        <button onClick={() => setView("map")}><Map /><span>Mapa</span></button>
+        <button type="button" onClick={showList}><Compass /><span>Explorar</span></button>
+        <button type="button" onClick={showMap}><Map /><span>Mapa</span></button>
         <button onClick={() => setPanel("interests")}><Heart /><span>Intereses</span></button>
         <button onClick={() => setPanel("submit")}><Plus /><span>Enviar</span></button>
       </nav>
