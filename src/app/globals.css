@@ -51,7 +51,15 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .event-tile { transition: transform .25s ease, border-color .25s ease; }
 .event-tile:hover { transform: translateY(-3px); border-color: rgba(255,255,255,.2); }
 .event-visual { background-color: hsl(var(--tile-hue) 22% 12%); }
-.event-visual:before { content: ""; position: absolute; z-index: 1; inset: 0; background: linear-gradient(to top, rgba(0,0,0,.96), rgba(0,0,0,.72) 46%, rgba(0,0,0,.06) 100%); }
+.event-visual:before, .event-detail-visual:before { content: ""; position: absolute; z-index: 1; inset: 0; background: linear-gradient(to top, rgba(0,0,0,.96), rgba(0,0,0,.7) 46%, rgba(0,0,0,.05) 100%); }
+.event-placeholder { position: absolute; inset: 0; overflow: hidden; color: hsl(var(--fallback-hue) 78% 67%); background: linear-gradient(145deg, hsl(var(--fallback-hue) 42% 17%), #090a0c 72%); }
+.event-placeholder-art { position: absolute; inset: 0; width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 2; opacity: .22; }
+.event-placeholder-art circle:first-child { fill: currentColor; stroke: none; opacity: .09; }
+.event-placeholder-art circle:nth-child(2) { stroke-width: 10; opacity: .45; }
+.event-placeholder-mark { position: absolute; z-index: 2; inset: 0; display: grid; place-content: center; justify-items: center; color: #f4f4f5; text-align: center; transform: translateY(-48px); }
+.event-placeholder-icon { display: grid; width: 64px; height: 64px; place-items: center; border: 1px solid hsl(var(--fallback-hue) 78% 67% / .62); border-radius: 50%; color: hsl(var(--fallback-hue) 84% 74%); background: hsl(var(--fallback-hue) 36% 12% / .72); box-shadow: 0 12px 30px rgba(0,0,0,.3); }
+.event-placeholder-icon svg { width: 31px; height: 31px; stroke-width: 1.6; }
+.event-placeholder-mark > span:nth-child(2) { margin-top: 10px; color: hsl(var(--fallback-hue) 55% 82%); font-size: 9px; font-weight: 750; letter-spacing: .14em; text-transform: uppercase; }
 .discovery-shell .empty-state, .discovery-shell .map-loading { padding: 60px 20px; border: 1px solid rgba(255,255,255,.11); border-radius: 24px; background: rgba(255,255,255,.035); color: #a1a1aa; }
 .discovery-shell .map-shell { margin-top: 0; overflow: hidden; border: 1px solid rgba(255,255,255,.11); border-radius: 24px; }
 .discovery-shell .map { height: 560px; filter: grayscale(.8) invert(.9) hue-rotate(180deg) contrast(.9); }
