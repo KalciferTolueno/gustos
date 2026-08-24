@@ -202,17 +202,9 @@ export function Dashboard({ events, demo, signedIn, userName, interestTopics, in
         </header>
 
         <section className="hero-stage mx-auto mt-5 max-w-6xl">
-          <div className="hero-layout">
-            <div className="hero-copy">
-              <h1>Tu próximo <span>panorama</span> está acá</h1>
-              <p>{userName ? `Hola, ${userName}. Descubre eventos según lo que realmente te gusta.` : "Explora gratis como invitado. Busca artistas, comunidades, juegos, anime y eventos futuros en Chile."}</p>
-            </div>
-            <div className="hero-radar" aria-hidden="true"><span /><i /><b /></div>
-            <div className="hero-status">
-              <span><i />Radar activo</span>
-              <strong>{events.length}</strong>
-              <small>panoramas disponibles<br />en todo Chile</small>
-            </div>
+          <div className="hero-copy">
+            <h1>Tu próximo <span>panorama</span> está acá</h1>
+            <p>{userName ? `Hola, ${userName}. Descubre eventos según lo que realmente te gusta.` : "Explora gratis como invitado. Busca artistas, comunidades, juegos, anime y eventos futuros en Chile."}</p>
           </div>
           <form onSubmit={searchWeb} className="glass-panel relative z-10 mx-auto mt-8 grid max-w-4xl gap-2 rounded-2xl p-2 text-left md:grid-cols-[1.5fr_1fr_auto] md:rounded-full">
             <label className="flex items-center gap-2 px-3">

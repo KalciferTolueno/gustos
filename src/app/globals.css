@@ -76,32 +76,12 @@ button:not(:disabled), [role="button"]:not(:disabled) { cursor: pointer; }
 .site-account-button:hover { background: #e5ffa7; }
 .hero-stage {
   position: relative;
-  isolation: isolate;
-  overflow: hidden;
-  padding: clamp(32px, 5vw, 68px) clamp(20px, 5vw, 72px) clamp(28px, 4vw, 48px);
-  border: 1px solid rgba(255,255,255,.095);
-  border-radius: 30px;
-  background: radial-gradient(circle at 82% 44%, rgba(217,255,129,.1), transparent 27%), #101115;
-  box-shadow: 0 30px 80px rgba(0,0,0,.28), inset 0 1px rgba(255,255,255,.035);
+  padding: clamp(52px, 7vw, 92px) 0 clamp(40px, 5vw, 64px);
 }
-.hero-stage:before { content: ""; position: absolute; z-index: -1; right: -11rem; top: -13rem; width: 36rem; height: 36rem; border: 1px solid rgba(217,255,129,.11); border-radius: 50%; }
-.hero-stage:after { content: ""; position: absolute; z-index: -1; right: 3rem; bottom: -10rem; width: 23rem; height: 23rem; border: 1px solid rgba(255,255,255,.055); border-radius: 50%; }
-.hero-layout { position: relative; z-index: 1; display: grid; grid-template-columns: minmax(0, 1fr) 220px; align-items: end; gap: 48px; }
-.hero-copy { max-width: 760px; }
+.hero-copy { max-width: 896px; margin-inline: auto; }
 .hero-copy h1 { max-width: 12ch; margin: 0; color: #f7f7f7; font-size: clamp(45px, 6vw, 86px); font-weight: 560; line-height: .94; letter-spacing: -.04em; }
 .hero-copy h1 span { color: #d9ff81; font-weight: 660; }
 .hero-copy p { max-width: 640px; margin: 24px 0 0; color: #a7a8ae; font-size: clamp(15px, 1.35vw, 18px); line-height: 1.65; }
-.hero-status { position: relative; z-index: 2; align-self: stretch; display: grid; align-content: end; justify-items: end; padding-bottom: 10px; text-align: right; }
-.hero-status > span { display: flex; align-items: center; gap: 8px; color: #b7b9b2; font-size: 11px; font-weight: 650; letter-spacing: .04em; }
-.hero-status > span i { width: 7px; height: 7px; border-radius: 50%; background: #d9ff81; box-shadow: 0 0 0 4px rgba(217,255,129,.1), 0 0 14px rgba(217,255,129,.55); }
-.hero-status strong { margin-top: 16px; color: #f4f4f5; font-size: clamp(52px, 6vw, 78px); font-weight: 520; line-height: .82; letter-spacing: -.04em; }
-.hero-status small { margin-top: 13px; color: #7d7f85; font-size: 11px; line-height: 1.45; }
-.hero-radar { position: absolute; z-index: 0; right: -18px; top: 50%; width: 260px; height: 260px; border: 1px solid rgba(217,255,129,.08); border-radius: 50%; transform: translateY(-50%); }
-.hero-radar:before, .hero-radar:after, .hero-radar span { content: ""; position: absolute; inset: 17%; border: 1px solid rgba(217,255,129,.09); border-radius: 50%; }
-.hero-radar:after { inset: 35%; }
-.hero-radar span { inset: 49%; border: 0; background: #d9ff81; box-shadow: 0 0 18px rgba(217,255,129,.75); }
-.hero-radar i { position: absolute; left: 50%; top: 50%; width: 48%; height: 1px; background: linear-gradient(90deg, rgba(217,255,129,.42), transparent); transform: rotate(-38deg); transform-origin: left; }
-.hero-radar b { position: absolute; right: 24%; top: 27%; width: 7px; height: 7px; border-radius: 50%; background: #f4f4f5; box-shadow: 0 0 0 5px rgba(244,244,245,.06); }
 .event-tile { transition: transform .25s ease, border-color .25s ease; }
 .event-tile:hover { transform: translateY(-3px); border-color: rgba(255,255,255,.2); }
 .event-visual { background-color: hsl(var(--tile-hue) 22% 12%); }
@@ -135,14 +115,9 @@ button:not(:disabled), [role="button"]:not(:disabled) { cursor: pointer; }
   .site-brand-copy small { display: none; }
   .site-account-button { min-width: 42px; padding-inline: 12px; }
   .site-account-button span { display: none; }
-  .hero-stage { margin-top: 18px; border-radius: 24px; }
-  .hero-layout { grid-template-columns: 1fr; gap: 26px; }
+  .hero-stage { margin-top: 10px; padding: 52px 4px 40px; }
   .hero-copy h1 { max-width: 10ch; }
   .hero-copy p { margin-top: 18px; line-height: 1.55; }
-  .hero-status { display: flex; align-items: center; justify-content: space-between; padding: 18px 0 0; border-top: 1px solid rgba(255,255,255,.08); text-align: left; }
-  .hero-status strong { order: 3; margin: 0; font-size: 44px; }
-  .hero-status small { display: none; }
-  .hero-radar { right: -95px; top: 22%; width: 220px; height: 220px; opacity: .7; }
 }
 
 @media (min-width: 768px) {
