@@ -92,36 +92,55 @@ async function requestPage(value: string) {
   });
 }
 
-async function requestImageHeaders(value: string) {
+async function requestImageSample(value: string) {
   const { url, address } = await publicUrl(value);
-  return new Promise<{ url: URL; status: number; location?: string; contentType?: string; contentLength: number }>((resolve, reject) => {
-    const options = { hostname: address, port: url.port || undefined, path: `${url.pathname}${url.search}`, method: "HEAD", headers: { host: url.host, "user-agent": "Mozilla/5.0 (compatible; DatitoEventBot/1.0)" }, signal: AbortSignal.timeout(8_000) };
+  return new Promise<{ url: URL; status: number; location?: string; contentType?: string; contentLength: number; sample: Buffer }>((resolve, reject) => {
+    const options = { hostname: address, port: url.port || undefined, path: `${url.pathname}${url.search}`, method: "GET", headers: { host: url.host, range: "bytes=0-63", "user-agent": "Mozilla/5.0 (compatible; DatitoEventBot/1.0)" }, signal: AbortSignal.timeout(8_000) };
     const request = url.protocol === "https:" ? httpsRequest({ ...options, servername: url.hostname }) : httpRequest(options);
     request.on("response", (response) => {
-      response.resume();
-      resolve({
-        url,
-        status: response.statusCode ?? 0,
-        location: response.headers.location,
-        contentType: response.headers["content-type"],
-        contentLength: Number(response.headers["content-length"] ?? 0),
+      const chunks: Buffer[] = [];
+      let size = 0;
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        const contentRange = response.headers["content-range"]?.match(/\/(\d+)$/)?.[1];
+        resolve({ url, status: response.statusCode ?? 0, location: response.headers.location, contentType: response.headers["content-type"], contentLength: Number(contentRange ?? response.headers["content-length"] ?? 0), sample: Buffer.concat(chunks).subarray(0, 64) });
+        response.destroy();
+      };
+      response.on("data", (chunk: Buffer) => {
+        if (size < 64) chunks.push(chunk.subarray(0, 64 - size));
+        size += chunk.length;
+        if (size >= 64) finish();
       });
+      response.on("end", finish);
+      response.on("error", (error) => { if (!settled) reject(error); });
     });
     request.on("error", reject);
     request.end();
   });
 }
 
-async function usablePublicImage(value: string) {
+export function hasSupportedImageSignature(sample: Uint8Array) {
+  const bytes = Buffer.from(sample);
+  const png = bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+  const jpeg = bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  const webp = bytes.length >= 12 && bytes.toString("ascii", 0, 4) === "RIFF" && bytes.toString("ascii", 8, 12) === "WEBP";
+  const brand = bytes.length >= 12 && bytes.toString("ascii", 4, 8) === "ftyp" ? bytes.toString("ascii", 8, 32) : "";
+  const avif = /avif|avis|mif1/.test(brand);
+  return png || jpeg || webp || avif;
+}
+
+export async function validateEventImageUrl(value: string) {
   let url = value;
   for (let redirects = 0; redirects < 4; redirects += 1) {
-    const response = await requestImageHeaders(url);
+    const response = await requestImageSample(url);
     if (response.status >= 300 && response.status < 400 && response.location) {
       url = new URL(response.location, response.url).toString();
       continue;
     }
     const supportedType = /^image\/(?:avif|jpeg|png|webp)(?:;|$)/i.test(response.contentType ?? "");
-    return response.status >= 200 && response.status < 300 && supportedType && response.contentLength <= 20_000_000 ? response.url.toString() : null;
+    return response.status >= 200 && response.status < 300 && supportedType && response.contentLength <= 20_000_000 && hasSupportedImageSignature(response.sample) ? response.url.toString() : null;
   }
   return null;
 }
@@ -137,7 +156,7 @@ export async function findEventPageImages(sourceUrl: string) {
     if (response.status < 200 || response.status >= 300 || !response.contentType?.includes("text/html")) return [];
     const images = extractEventImages(response.html, response.url.toString());
     const safeImages = await Promise.all(images.map(async (image) => {
-      try { return await usablePublicImage(image); } catch { return null; }
+      try { return await validateEventImageUrl(image); } catch { return null; }
     }));
     return safeImages.filter((image): image is string => Boolean(image));
   }
@@ -156,7 +175,7 @@ export async function selectMatchingEventImage(title: string, sourceUrls: string
   const candidates: string[] = [];
   if (existingImage) {
     try {
-      const usableImage = await usablePublicImage(existingImage);
+      const usableImage = await validateEventImageUrl(existingImage);
       if (usableImage) candidates.push(usableImage);
     } catch { /* Ignore an unsafe or unavailable stored URL. */ }
   }
@@ -189,7 +208,7 @@ export async function selectMatchingEventImage(title: string, sourceUrls: string
     searches = response.output.filter((item) => item.type === "web_search_call").length;
     usage = agentUsage(response.usage, searches);
     const selected = JSON.parse(response.output_text).imageUrl as string | null;
-    const usableSelection = selected ? await usablePublicImage(selected) : null;
+    const usableSelection = selected ? await validateEventImageUrl(selected) : null;
     await finishAgentRun(reservation.runId, { status: "succeeded", searches, candidates: candidates.length, published: 0, ...usage });
     return candidates.length ? usableSelection && candidates.includes(usableSelection) ? usableSelection : null : usableSelection;
   } catch (error) {
@@ -226,6 +245,15 @@ export async function backfillMissingEventImages(limit = 12) {
     }
   }
   return { checked: rows.length, updated };
+}
+
+export async function clearPageUrlsStoredAsImages() {
+  const db = getDb();
+  const cleared = await db.update(events).set({ imageUrl: null, updatedAt: new Date() }).where(and(
+    isNotNull(events.imageUrl),
+    eq(events.imageUrl, events.sourceUrl),
+  )).returning({ id: events.id });
+  return { corruptImageUrlsCleared: cleared.length };
 }
 
 export async function auditEventImages(limit = 6) {

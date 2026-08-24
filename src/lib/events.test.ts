@@ -3,7 +3,7 @@ import { acceptedEventState, eventHasNotEnded, eventIdentityKey, eventKey, isSpe
 import { matchesEventSearch } from "./event-search";
 import { hashPassword, verifyPassword } from "./passwords";
 import { coverageQueryDefinitions, normalizeDiscoveryQuery, queryIsFresh } from "./discovery-queries";
-import { extractEventImage, extractEventImages } from "./event-images";
+import { extractEventImage, extractEventImages, hasSupportedImageSignature } from "./event-images";
 import { agentUsage } from "./agent";
 import { eventMapLocation } from "./event-map-location";
 import { consultedWebUrls } from "./web-evidence";
@@ -108,6 +108,12 @@ describe("event images", () => {
       "https://example.com/gallery.png",
       "https://example.com/background.jpg",
     ]);
+  });
+
+  it("rejects HTML and accepts real image signatures", () => {
+    expect(hasSupportedImageSignature(Buffer.from("<!doctype html><html>"))).toBe(false);
+    expect(hasSupportedImageSignature(Buffer.from([0xff, 0xd8, 0xff, 0xe0]))).toBe(true);
+    expect(hasSupportedImageSignature(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))).toBe(true);
   });
 });
 

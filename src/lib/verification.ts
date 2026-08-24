@@ -6,6 +6,7 @@ import { eventSourceObservations, eventSources, events, sources } from "@/db/sch
 import { agentUsage, beginAgentRun, finishAgentRun } from "./agent";
 import { acceptedEventState, eventIdentityKey, eventKey, normalizedSourceUrl } from "./events";
 import { consultedWebUrls } from "./web-evidence";
+import { validateEventImageUrl } from "./event-images";
 
 const verificationSchema = z.object({
   state: z.enum(["scheduled", "postponed", "cancelled", "unknown"]),
@@ -93,6 +94,7 @@ export async function verifyNextEvent() {
     const consulted = new Set([...consultedWebUrls(response.output)].map((url) => normalizedSourceUrl(url, true)));
     const sourceVerified = consulted.has(normalizedSourceUrl(result.sourceUrl, true)) && normalizedSourceUrl(result.sourceUrl, true) === normalizedSourceUrl(target.source.url, true);
     if (!sourceVerified) throw new Error("Verification source was not consulted");
+    const verifiedImageUrl = result.imageUrl ? await validateEventImageUrl(result.imageUrl).catch(() => null) : null;
     const [trustedSource] = await db.select({ id: sources.id }).from(sources).where(and(eq(sources.domain, sourceDomain(target.source.url)), eq(sources.enabled, true), gte(sources.trust, 80))).limit(1);
 
     const cancellationSources = await db.select({ url: eventSources.url }).from(eventSourceObservations).innerJoin(eventSources, eq(eventSources.id, eventSourceObservations.eventSourceId)).where(and(
@@ -136,7 +138,7 @@ export async function verifyNextEvent() {
         if (startsAt && trustedOfficial) changes.startsAt = startsAt;
         if (endsAt && trustedOfficial) changes.endsAt = endsAt;
         if (result.venue && trustedOfficial) changes.venue = result.venue;
-        if (!target.event.imageUrl && result.imageUrl) changes.imageUrl = result.imageUrl;
+        if (!target.event.imageUrl && verifiedImageUrl) changes.imageUrl = verifiedImageUrl;
         if (trustedOfficial) {
           changes.identityKey = !identityCollision || identityCollision.id === target.event.id ? identityKey : null;
           if (!externalCollision || externalCollision.id === target.event.id) changes.externalKey = externalKey;

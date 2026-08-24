@@ -62,7 +62,6 @@ export function EventImageFallback({ categoryName }: { categoryName: string }) {
       </svg>
       <div className="event-placeholder-mark">
         <span className="event-placeholder-icon"><Icon aria-hidden="true" /></span>
-        <span>Visual temático</span>
       </div>
     </div>
   );
