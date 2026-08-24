@@ -10,6 +10,14 @@ const queriesPerRun = Math.max(1, Number(process.env.AGENT_QUERIES_PER_RUN ?? 8)
 const imagesPerRun = Math.max(1, Number(process.env.AGENT_IMAGES_PER_RUN ?? 16));
 let running = false;
 
+async function runNonBlockingStep(label: string, action: () => Promise<unknown>) {
+  try {
+    console.log(await action());
+  } catch (error) {
+    console.error(new Date().toISOString(), `${label} failed; continuing discovery`, error);
+  }
+}
+
 async function run() {
   if (running) {
     console.log(new Date().toISOString(), "discovery is still running; skipping overlapping cycle");
@@ -22,7 +30,7 @@ async function run() {
     await ensureScheduledCoverage();
     await recoverStaleQueries();
     console.log(await consolidateDuplicateEvents());
-    console.log(await verifyNextEvent());
+    await runNonBlockingStep("event verification", verifyNextEvent);
     let handled = false;
     for (let index = 0; index < queriesPerRun; index += 1) {
       const query = await nextDueQuery();
