@@ -43,18 +43,18 @@ export function EmailAuthForm({ google, discord }: { google: boolean; discord: b
   }
 
   return (
-      <section className="login-panel embedded-login">
-        <div className="auth-tabs"><button className={mode === "login" ? "selected" : ""} onClick={() => { setMode("login"); setError(""); }}>Entrar</button><button className={mode === "register" ? "selected" : ""} onClick={() => { setMode("register"); setError(""); }}>Crear cuenta</button></div>
-        <div className="auth-heading"><span>{mode === "login" ? "BIENVENIDO DE VUELTA" : "ÚNETE A DATITO"}</span><h2>{mode === "login" ? "Inicia sesión" : "Crea tu cuenta"}</h2></div>
-        <form action={submit} className="auth-form">
-          {mode === "register" && <label><span>Nombre</span><div><UserRound size={18} /><input name="name" autoComplete="name" minLength={2} maxLength={80} required /></div></label>}
-          <label><span>Correo electrónico</span><div><AtSign size={18} /><input name="email" type="email" autoComplete="email" required /></div></label>
-          <label><span>Contraseña</span><div><LockKeyhole size={18} /><input name="password" type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} minLength={mode === "register" ? 12 : 1} maxLength={200} required /></div></label>
+      <section className="login-panel embedded-login" aria-labelledby="auth-title">
+        <div className="auth-tabs" role="tablist" aria-label="Acceso a tu cuenta"><button type="button" role="tab" aria-selected={mode === "login"} className={mode === "login" ? "selected" : ""} onClick={() => { setMode("login"); setError(""); }}>Entrar</button><button type="button" role="tab" aria-selected={mode === "register"} className={mode === "register" ? "selected" : ""} onClick={() => { setMode("register"); setError(""); }}>Crear Cuenta</button></div>
+        <div className="auth-heading"><span>{mode === "login" ? "BIENVENIDO DE VUELTA" : "ÚNETE A DATITO"}</span><h2 id="auth-title">{mode === "login" ? "Inicia sesión" : "Crea tu cuenta"}</h2></div>
+        <form action={submit} className="auth-form" aria-labelledby="auth-title">
+          {mode === "register" && <label><span>Nombre</span><div><UserRound size={18} aria-hidden="true" /><input name="name" autoComplete="name" minLength={2} maxLength={80} required /></div></label>}
+          <label><span>Correo electrónico</span><div><AtSign size={18} aria-hidden="true" /><input name="email" type="email" inputMode="email" autoComplete="email" spellCheck={false} required /></div></label>
+          <label><span>Contraseña</span><div><LockKeyhole size={18} aria-hidden="true" /><input name="password" type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} minLength={mode === "register" ? 12 : 1} maxLength={200} required /></div></label>
           {mode === "register" && <small>12 caracteres como mínimo, con letras y números.</small>}
-          {error && <div className="form-error">{error}</div>}
-          <button disabled={loading}>{loading ? "Procesando..." : mode === "login" ? "Entrar" : "Crear cuenta"}</button>
+          {error && <div className="form-error" role="alert">{error}</div>}
+          <button type="submit" disabled={loading}>{loading ? "Procesando…" : mode === "login" ? "Entrar" : "Crear Cuenta"}</button>
         </form>
-        {(google || discord) && <><div className="auth-divider"><span>o continúa con</span></div><div className="social-login">{google && <button onClick={() => signIn("google", { callbackUrl: "/" })}>Google</button>}{discord && <button onClick={() => signIn("discord", { callbackUrl: "/" })}>Discord</button>}</div></>}
+        {(google || discord) && <><div className="auth-divider"><span>o continúa con</span></div><div className="social-login">{google && <button type="button" onClick={() => signIn("google", { callbackUrl: "/" })}>Google</button>}{discord && <button type="button" onClick={() => signIn("discord", { callbackUrl: "/" })}>Discord</button>}</div></>}
       </section>
   );
 }
