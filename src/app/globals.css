@@ -51,7 +51,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .event-tile { transition: transform .25s ease, border-color .25s ease; }
 .event-tile:hover { transform: translateY(-3px); border-color: rgba(255,255,255,.2); }
 .event-visual { background-color: hsl(var(--tile-hue) 22% 12%); background-position: center; background-size: cover; }
-.event-visual:before { content: ""; position: absolute; inset: 0; background: linear-gradient(to top, rgba(0,0,0,.72), rgba(0,0,0,.05) 70%); }
+.event-visual:before { content: ""; position: absolute; inset: 0; background: linear-gradient(to top, rgba(0,0,0,.96), rgba(0,0,0,.72) 46%, rgba(0,0,0,.06) 100%); }
 .discovery-shell .empty-state, .discovery-shell .map-loading { padding: 60px 20px; border: 1px solid rgba(255,255,255,.11); border-radius: 24px; background: rgba(255,255,255,.035); color: #a1a1aa; }
 .discovery-shell .map-shell { margin-top: 0; overflow: hidden; border: 1px solid rgba(255,255,255,.11); border-radius: 24px; }
 .discovery-shell .map { height: 560px; filter: grayscale(.8) invert(.9) hue-rotate(180deg) contrast(.9); }

@@ -240,12 +240,12 @@ export async function saveCandidate(candidate: {
     const [externalMatch] = await tx.select({ id: events.id }).from(events).where(and(eq(events.externalKey, externalKey), eq(events.identityKey, identityKey))).limit(1);
     const sourceIdentity = sourceMatch && (sourceMatch.identityKey ?? eventIdentityKey(sourceMatch.title, sourceMatch.startsAt, sourceMatch.venue, sourceMatch.city));
     const existingId = identityMatch?.id ?? externalMatch?.id ?? (sourceMatch && sourceIdentity === identityKey ? sourceMatch.eventId : undefined);
-    const [existing] = existingId ? await tx.select({ status: events.status, identityKey: events.identityKey }).from(events).where(eq(events.id, existingId)).limit(1) : [];
+    const [existing] = existingId ? await tx.select({ status: events.status, identityKey: events.identityKey, imageUrl: events.imageUrl }).from(events).where(eq(events.id, existingId)).limit(1) : [];
     const existingIdentity = existing?.identityKey ?? (!identityMatch || identityMatch.id === existingId ? identityKey : null);
     const [saved] = existing
       ? await tx.update(events).set(existing.status === "pending"
         ? { ...event, externalKey, identityKey: existingIdentity, status, verifiedAt: now, updatedAt: now }
-        : { identityKey: existingIdentity, updatedAt: now }).where(eq(events.id, existingId)).returning({ id: events.id, status: events.status })
+        : { identityKey: existingIdentity, imageUrl: existing.imageUrl ?? candidate.imageUrl, updatedAt: now }).where(eq(events.id, existingId)).returning({ id: events.id, status: events.status })
       : await tx.insert(events).values({ ...event, externalKey, identityKey, status, eventState: "scheduled", discoveredByAi: true, verifiedAt: now }).returning({ id: events.id, status: events.status });
 
     await tx.delete(eventTopics).where(eq(eventTopics.eventId, saved.id));
