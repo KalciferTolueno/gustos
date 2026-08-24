@@ -261,12 +261,10 @@ export function sameEventOccurrence(first: { title: string; startsAt: Date; time
 export function sameSourceOccurrence(first: { startsAt: Date; timePrecision?: string; city?: string | null; venue?: string | null; sourceUrl?: string }, second: { startsAt: Date; timePrecision?: string; city?: string | null; venue?: string | null; sourceUrl?: string }) {
   if (!first.sourceUrl || !second.sourceUrl || normalizedSourceUrl(first.sourceUrl, true) !== normalizedSourceUrl(second.sourceUrl, true)) return false;
   const sameDay = first.startsAt.toISOString().slice(0, 10) === second.startsAt.toISOString().slice(0, 10);
-  const sameTime = first.startsAt.toISOString().slice(0, 16) === second.startsAt.toISOString().slice(0, 16);
-  const dateOnly = first.timePrecision === "date" || second.timePrecision === "date";
   const firstCity = normalizedText(first.city);
   const secondCity = normalizedText(second.city);
   const compatibleCities = !firstCity || !secondCity || firstCity === secondCity || (isSantiagoMetroCity(firstCity) && isSantiagoMetroCity(secondCity));
-  return sameDay && (sameTime || dateOnly) && compatibleCities && compatibleLocation(first.venue, second.venue);
+  return sameDay && compatibleCities && compatibleLocation(first.venue, second.venue);
 }
 
 export function representativeEventTitle(titles: string[]) {

@@ -60,7 +60,7 @@ describe("eventKey", () => {
     const regional = { startsAt: new Date("2026-09-12T13:00:00Z"), timePrecision: "exact", city: "Santiago", venue: "Hotel Gran Palace", sourceUrl: regionalSource };
     expect(sameSourceOccurrence(regional, { ...regional, startsAt: new Date("2026-09-12T12:00:00Z"), timePrecision: "date" })).toBe(true);
     expect(sameSourceOccurrence(regional, { ...regional, startsAt: new Date("2026-09-13T13:00:00Z") })).toBe(false);
-    expect(sameSourceOccurrence(regional, { ...regional, startsAt: new Date("2026-09-12T16:00:00Z") })).toBe(false);
+    expect(sameSourceOccurrence(regional, { ...regional, startsAt: new Date("2026-09-12T16:00:00Z") })).toBe(true);
     expect(representativeEventTitle([
       "Dragon Ball Super Card Game: Fusion World Championship 26-27 Regional September Wave 2",
       "Digimon Card Game 26-27 Regionals September",
