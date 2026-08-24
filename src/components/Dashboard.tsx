@@ -203,7 +203,7 @@ export function Dashboard({ events, demo, signedIn, userName, interestTopics, in
 
         <section className="hero-stage mx-auto mt-5 max-w-6xl">
           <div className="hero-copy">
-            <h1>Tu próximo <span>panorama</span> está acá</h1>
+            <h1>Tu próximo <span className="hero-accent">panorama</span> <span className="hero-title-tail">está acá</span></h1>
             <p>{userName ? `Hola, ${userName}. Descubre eventos según lo que realmente te gusta.` : "Explora gratis como invitado. Busca artistas, comunidades, juegos, anime y eventos futuros en Chile."}</p>
           </div>
           <form onSubmit={searchWeb} className="glass-panel relative z-10 mx-auto mt-8 grid max-w-4xl gap-2 rounded-2xl p-2 text-left md:grid-cols-[1.5fr_1fr_auto] md:rounded-full">

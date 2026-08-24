@@ -73,8 +73,9 @@ button:not(:disabled), [role="button"]:not(:disabled) { cursor: pointer; }
   padding: clamp(52px, 7vw, 92px) 0 clamp(40px, 5vw, 64px);
 }
 .hero-copy { max-width: 896px; margin-inline: auto; }
-.hero-copy h1 { max-width: 12ch; margin: 0; color: #f7f7f7; font-size: clamp(45px, 6vw, 86px); font-weight: 560; line-height: .94; letter-spacing: -.04em; }
-.hero-copy h1 span { color: #d9ff81; font-weight: 660; }
+.hero-copy h1 { max-width: 15ch; margin: 0; color: #f7f7f7; font-size: clamp(45px, 6vw, 86px); font-weight: 560; line-height: .94; letter-spacing: -.04em; }
+.hero-copy h1 .hero-accent { color: #d9ff81; font-weight: 660; }
+.hero-title-tail { white-space: nowrap; }
 .hero-copy p { max-width: 640px; margin: 24px 0 0; color: #a7a8ae; font-size: clamp(15px, 1.35vw, 18px); line-height: 1.65; }
 .event-tile { transition: transform .25s ease, border-color .25s ease; }
 .event-tile:hover { transform: translateY(-3px); border-color: rgba(255,255,255,.2); }
