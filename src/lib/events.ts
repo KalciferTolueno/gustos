@@ -3,6 +3,7 @@ import { and, asc, desc, eq, gt, gte, inArray, lt, or, sql } from "drizzle-orm";
 import { getDb } from "../db";
 import { discoveryQueryEvents, eventSourceObservations, eventSources, eventTopics, events, topics, type EventRow } from "../db/schema";
 import { categoryNames, topicSlug, type CategorySlug } from "./taxonomy";
+import { musicGenresFromLabels } from "./music-genres";
 
 export type EventCard = Pick<
   EventRow,
@@ -32,7 +33,7 @@ export type EventCard = Pick<
   | "verifiedAt"
   | "updatedAt"
   | "modality"
-> & { categoryName: string; topicNames: string[] };
+> & { categoryName: string; topicNames: string[]; filterNames: string[] };
 
 const demoEvents: EventCard[] = [
   {
@@ -64,6 +65,7 @@ const demoEvents: EventCard[] = [
     updatedAt: new Date("2026-08-23T12:00:00-04:00"),
     modality: "in_person",
     topicNames: ["Techno", "Musica electronica"],
+    filterNames: ["Techno", "Electrónica"],
   },
   {
     id: "demo-eva",
@@ -94,6 +96,7 @@ const demoEvents: EventCard[] = [
     updatedAt: new Date("2026-08-23T12:00:00-04:00"),
     modality: "in_person",
     topicNames: ["Evangelion", "Anime"],
+    filterNames: ["Evangelion"],
   },
   {
     id: "demo-valorant",
@@ -124,6 +127,7 @@ const demoEvents: EventCard[] = [
     updatedAt: new Date("2026-08-23T12:00:00-04:00"),
     modality: "online",
     topicNames: ["Valorant", "Gaming"],
+    filterNames: ["Valorant"],
   },
   {
     id: "demo-miku",
@@ -154,6 +158,7 @@ const demoEvents: EventCard[] = [
     updatedAt: new Date("2026-08-23T12:00:00-04:00"),
     modality: "in_person",
     topicNames: ["Hatsune Miku", "Anime"],
+    filterNames: ["Hatsune Miku"],
   },
 ];
 
@@ -361,6 +366,7 @@ export async function consolidateDuplicateEvents(limit = Number.POSITIVE_INFINIT
       const best = group.find((event) => event.imageUrl);
       const longestDescription = group.map((event) => event.description).sort((a, b) => b.length - a.length)[0];
       const exactTiming = group.find((event) => event.timePrecision === "exact");
+      const exactLocation = group.find((event) => event.locationPrecision === "exact" && event.latitude != null && event.longitude != null);
       await tx.update(events).set({
         title: canonicalTitle,
         identityKey,
@@ -374,8 +380,9 @@ export async function consolidateDuplicateEvents(limit = Number.POSITIVE_INFINIT
         region: keeper.region ?? group.find((event) => event.region)?.region,
         venue: canonicalVenue,
         address: keeper.address ?? group.find((event) => event.address)?.address,
-        latitude: keeper.latitude ?? group.find((event) => event.latitude != null)?.latitude,
-        longitude: keeper.longitude ?? group.find((event) => event.longitude != null)?.longitude,
+        latitude: canonicalVenue === "Múltiples recintos" ? null : exactLocation?.latitude ?? keeper.latitude,
+        longitude: canonicalVenue === "Múltiples recintos" ? null : exactLocation?.longitude ?? keeper.longitude,
+        locationPrecision: canonicalVenue === "Múltiples recintos" ? "multiple" : exactLocation ? "exact" : keeper.locationPrecision,
         priceLabel: keeper.priceLabel ?? group.find((event) => event.priceLabel)?.priceLabel,
         submittedBy: keeper.submittedBy ?? group.find((event) => event.submittedBy)?.submittedBy,
         eventState: group.filter((event) => event.eventState !== "scheduled").sort((a, b) => b.confidence - a.confidence)[0]?.eventState ?? keeper.eventState,
@@ -414,7 +421,7 @@ export async function listEvents(): Promise<{ events: EventCard[]; demo: boolean
   const categoryRows = await db.select({ id: topics.id, name: topics.name }).from(topics).where(eq(topics.type, "category"));
   const categories = new Map(categoryRows.map((category) => [category.id, category.name]));
   const rows = await db
-    .select({ event: events, topicName: topics.name })
+    .select({ event: events, topicName: topics.name, topicType: topics.type })
     .from(events)
     .leftJoin(eventTopics, eq(eventTopics.eventId, events.id))
     .leftJoin(topics, eq(topics.id, eventTopics.topicId))
@@ -423,8 +430,15 @@ export async function listEvents(): Promise<{ events: EventCard[]; demo: boolean
 
   const grouped = new Map<string, EventCard>();
   for (const row of rows) {
-    const current = grouped.get(row.event.id) ?? { ...row.event, categoryName: categories.get(row.event.categoryId ?? 0) ?? "Panorama", topicNames: [] };
-    if (row.topicName) current.topicNames.push(row.topicName);
+    const current = grouped.get(row.event.id) ?? { ...row.event, categoryName: categories.get(row.event.categoryId ?? 0) ?? "Panorama", topicNames: [], filterNames: [] };
+    if (row.topicName) {
+      current.topicNames.push(row.topicName);
+      const detectedGenres = musicGenresFromLabels([row.topicName]);
+      const names = current.categoryName === "Música"
+        ? row.topicType === "genre" ? detectedGenres.length ? detectedGenres : [row.topicName] : detectedGenres
+        : row.topicType === "topic" ? [row.topicName] : [];
+      for (const name of names) if (!current.filterNames.includes(name)) current.filterNames.push(name);
+    }
     grouped.set(row.event.id, current);
   }
   return { events: [...grouped.values()], demo: false };
@@ -442,8 +456,10 @@ export async function saveCandidate(candidate: {
   address?: string | null;
   latitude?: number | null;
   longitude?: number | null;
+  locationPrecision?: string;
   categorySlug: CategorySlug;
   topicNames: string[];
+  genreNames?: string[];
   artistNames?: string[];
   destinationNames?: string[];
   sourceName: string;
@@ -456,7 +472,7 @@ export async function saveCandidate(candidate: {
   const externalKey = eventKey(candidate.title, candidate.startsAt, candidate.sourceUrl, candidate.venue, candidate.city);
   const identityKey = eventIdentityKey(candidate.title, candidate.startsAt, candidate.city, candidate.venue);
   const status = candidate.confidence >= 85 ? "published" : "pending";
-  const { topicNames, artistNames = [], destinationNames = [], references = [], categorySlug, ...event } = candidate;
+  const { topicNames, genreNames = [], artistNames = [], destinationNames = [], references = [], categorySlug, ...event } = candidate;
   const now = new Date();
   const nextCheckAt = new Date(now.getTime() + (candidate.startsAt.getTime() - now.getTime() <= 30 * 24 * 60 * 60_000 ? 1 : candidate.startsAt.getTime() - now.getTime() <= 90 * 24 * 60 * 60_000 ? 3 : 7) * 24 * 60 * 60_000);
 
@@ -484,25 +500,27 @@ export async function saveCandidate(candidate: {
     const occurrenceMatch = (normalizedText(candidate.city) || occurrenceCities.size <= 1) && (normalizedText(candidate.venue) || occurrenceVenues.size <= 1) ? compatibleOccurrences[0] : undefined;
     const sourceMatches = sourceMatch && (sameEventOccurrence(sourceMatch, candidate) || sameSourceOccurrence(sourceMatch, candidate));
     const existingId = identityMatch?.id ?? externalMatch?.id ?? occurrenceMatch?.id ?? (sourceMatch && sourceMatches ? sourceMatch.eventId : undefined);
-    const [existing] = existingId ? await tx.select({ status: events.status, identityKey: events.identityKey, imageUrl: events.imageUrl, categoryId: events.categoryId, timePrecision: events.timePrecision, city: events.city, region: events.region, venue: events.venue, address: events.address, sourceName: events.sourceName, sourceUrl: events.sourceUrl }).from(events).where(eq(events.id, existingId)).limit(1) : [];
+    const [existing] = existingId ? await tx.select({ status: events.status, identityKey: events.identityKey, imageUrl: events.imageUrl, categoryId: events.categoryId, timePrecision: events.timePrecision, city: events.city, region: events.region, venue: events.venue, address: events.address, latitude: events.latitude, longitude: events.longitude, locationPrecision: events.locationPrecision, sourceName: events.sourceName, sourceUrl: events.sourceUrl }).from(events).where(eq(events.id, existingId)).limit(1) : [];
     const existingIdentity = existing?.status !== "pending" && existing?.identityKey ? existing.identityKey : !identityMatch || identityMatch.id === existingId ? identityKey : null;
     const candidateHasExactTime = existing?.timePrecision === "date" && candidate.timePrecision === "exact";
+    const candidateHasExactLocation = candidate.locationPrecision === "exact" && candidate.latitude != null && candidate.longitude != null;
     const shouldUpgradeSource = Boolean(existing && isSpecificEventSourceUrl(candidate.sourceUrl, candidate.title) && !isSpecificEventSourceUrl(existing.sourceUrl, candidate.title));
     const [saved] = existing
       ? await tx.update(events).set(existing.status === "pending"
         ? { ...event, externalKey, identityKey: existingIdentity, categoryId: category.id, status, verifiedAt: now, updatedAt: now }
-        : { identityKey: existingIdentity, categoryId: existing.categoryId ?? category.id, imageUrl: existing.imageUrl ?? candidate.imageUrl, sourceName: shouldUpgradeSource ? candidate.sourceName : existing.sourceName, sourceUrl: shouldUpgradeSource ? candidate.sourceUrl : existing.sourceUrl, startsAt: candidateHasExactTime ? candidate.startsAt : undefined, endsAt: candidateHasExactTime ? candidate.endsAt : undefined, timePrecision: candidateHasExactTime ? "exact" : existing.timePrecision, city: existing.city ?? candidate.city, region: existing.region ?? candidate.region, venue: existing.venue ?? candidate.venue, address: existing.address ?? candidate.address, updatedAt: now }).where(eq(events.id, existingId)).returning({ id: events.id, status: events.status })
+        : { identityKey: existingIdentity, categoryId: existing.categoryId ?? category.id, imageUrl: existing.imageUrl ?? candidate.imageUrl, sourceName: shouldUpgradeSource ? candidate.sourceName : existing.sourceName, sourceUrl: shouldUpgradeSource ? candidate.sourceUrl : existing.sourceUrl, startsAt: candidateHasExactTime ? candidate.startsAt : undefined, endsAt: candidateHasExactTime ? candidate.endsAt : undefined, timePrecision: candidateHasExactTime ? "exact" : existing.timePrecision, city: existing.city ?? candidate.city, region: existing.region ?? candidate.region, venue: existing.venue ?? candidate.venue, address: existing.address ?? candidate.address, latitude: candidateHasExactLocation ? candidate.latitude : existing.latitude, longitude: candidateHasExactLocation ? candidate.longitude : existing.longitude, locationPrecision: candidateHasExactLocation ? "exact" : existing.locationPrecision, updatedAt: now }).where(eq(events.id, existingId)).returning({ id: events.id, status: events.status })
       : await tx.insert(events).values({ ...event, externalKey, identityKey, categoryId: category.id, status, eventState: "scheduled", discoveredByAi: true, verifiedAt: now }).returning({ id: events.id, status: events.status });
 
     const labels: Array<[string, string, number]> = [
       ...topicNames.map((name): [string, string, number] => [name, "topic", category.id]),
+      ...genreNames.map((name): [string, string, number] => [name, "genre", category.id]),
       ...artistNames.map((name): [string, string, number] => [name, "artist", category.id]),
       ...destinationNames.map((name): [string, string, number] => [name, "destination", category.id]),
     ];
     for (const [name, type, parentId] of labels) {
       const slug = topicSlug(name);
       if (!slug) continue;
-      const [topic] = await tx.insert(topics).values({ name, slug, type, parentId, searchEnabled: false }).onConflictDoUpdate({ target: topics.slug, set: { name } }).returning({ id: topics.id });
+      const [topic] = await tx.insert(topics).values({ name, slug, type, parentId, searchEnabled: false }).onConflictDoUpdate({ target: topics.slug, set: type === "genre" ? { name, type, parentId } : { name } }).returning({ id: topics.id });
       await tx.insert(eventTopics).values({ eventId: saved.id, topicId: topic.id }).onConflictDoNothing();
     }
 

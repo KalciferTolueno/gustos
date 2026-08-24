@@ -22,8 +22,10 @@ const candidateSchema = z.object({
   address: z.union([z.string(), z.null()]),
   latitude: z.union([z.number().min(-90).max(90), z.null()]),
   longitude: z.union([z.number().min(-180).max(180), z.null()]),
+  coordinateSourceUrl: z.union([z.url(), z.null()]),
   categorySlug: z.enum(categorySlugs),
   topicNames: z.array(z.string()).max(8),
+  genreNames: z.array(z.string()).max(8),
   artistNames: z.array(z.string()).max(20),
   destinationNames: z.array(z.string()).max(8),
   sourceName: z.string().min(2),
@@ -64,8 +66,10 @@ const jsonSchema = {
           address: { type: ["string", "null"] },
           latitude: { type: ["number", "null"] },
           longitude: { type: ["number", "null"] },
+          coordinateSourceUrl: { type: ["string", "null"] },
           categorySlug: { type: "string", enum: categorySlugs },
           topicNames: { type: "array", items: { type: "string" }, maxItems: 8 },
+          genreNames: { type: "array", items: { type: "string" }, maxItems: 8 },
           artistNames: { type: "array", items: { type: "string" }, maxItems: 20 },
           destinationNames: { type: "array", items: { type: "string" }, maxItems: 8 },
           sourceName: { type: "string" },
@@ -79,7 +83,7 @@ const jsonSchema = {
           },
           confidence: { type: "integer", minimum: 0, maximum: 100 },
         },
-        required: ["title", "description", "startsAt", "endsAt", "timePrecision", "city", "region", "venue", "address", "latitude", "longitude", "categorySlug", "topicNames", "artistNames", "destinationNames", "sourceName", "sourceUrl", "imageUrl", "references", "confidence"],
+        required: ["title", "description", "startsAt", "endsAt", "timePrecision", "city", "region", "venue", "address", "latitude", "longitude", "coordinateSourceUrl", "categorySlug", "topicNames", "genreNames", "artistNames", "destinationNames", "sourceName", "sourceUrl", "imageUrl", "references", "confidence"],
       },
     },
   },
@@ -185,8 +189,10 @@ export async function runDiscoveryAgent(query?: string, queryId?: number, queryK
           "Incluye imageUrl solo si es el afiche, banner o fotografía real de ese evento publicada por su organizador o fuente oficial. No uses imágenes de stock, genéricas ni de otro evento; si no existe una imagen real pública usa null.",
           `categorySlug debe ser una de estas categorías canónicas: ${categorySlugs.map((slug) => `${slug} (${categoryNames[slug]})`).join(", ")}.`,
           expectedCategory ? `Para esta búsqueda usa categorySlug=${expectedCategory}.` : "Elige una sola categoría principal por evento.",
-          "topicNames contiene géneros, actividades, juegos, películas o franquicias; no repitas la categoría principal.",
-          "artistNames contiene todos los artistas, bandas, DJs, elencos o invitados anunciados. destinationNames contiene destinos de tours y viajes. Usa arreglos vacíos cuando no corresponda.",
+          "genreNames contiene únicamente géneros musicales establecidos (por ejemplo techno, cumbia, salsa, rock, K-pop o hip hop) y se usa solo para categorySlug=musica; nunca incluyas artistas, bandas, DJs, festivales ni actividades. Usa [] fuera de Música.",
+          "topicNames contiene actividades, juegos, películas o franquicias; no incluyas artistas ni repitas la categoría principal. artistNames contiene exclusivamente artistas, bandas, DJs, elencos o invitados.",
+          "destinationNames contiene destinos de tours y viajes. Usa arreglos vacíos cuando no corresponda.",
+          "Incluye latitude, longitude y coordinateSourceUrl únicamente si esa fuente consultada publica coordenadas exactas del recinto. Nunca uses el centro de una ciudad, comuna o región ni estimes coordenadas. En cualquier otro caso usa null en los tres campos.",
           "Usa timePrecision=exact solo cuando una fuente publique hora de inicio. Para una fecha confirmada sin hora, usa timePrecision=date, representa startsAt a las 12:00:00Z del día publicado y no inventes una hora. Usa ISO 8601 con zona horaria. Un evento confirmado por una fuente oficial puede tener confidence >= 85 aunque falte la dirección detallada.",
           "No incluyas eventos ya finalizados, noticias, productos ni resultados sin fecha concreta. Para eventos en curso incluye endsAt.",
           queryKind === "coverage" ? "Respeta estrictamente el rango de fechas incluido en la consulta." : "",
@@ -209,12 +215,18 @@ export async function runDiscoveryAgent(query?: string, queryId?: number, queryK
       const references = candidate.references.filter((reference) => candidateSources.has(normalizedSourceUrl(reference.url, true)));
       const directReference = [{ name: candidate.sourceName, url: candidate.sourceUrl }, ...references].find((reference) => isSpecificEventSourceUrl(reference.url, candidate.title));
       if (!directReference) continue;
+      const { coordinateSourceUrl, ...candidateData } = candidate;
+      const coordinatesVerified = candidate.latitude != null && candidate.longitude != null && coordinateSourceUrl != null
+        && candidateSources.has(normalizedSourceUrl(coordinateSourceUrl, true));
       const saved = await saveCandidate({
-        ...candidate,
+        ...candidateData,
         categorySlug: expectedCategory ?? candidate.categorySlug,
         sourceName: directReference?.name ?? candidate.sourceName,
         sourceUrl: directReference?.url ?? candidate.sourceUrl,
         imageUrl: null,
+        latitude: coordinatesVerified ? candidate.latitude : null,
+        longitude: coordinatesVerified ? candidate.longitude : null,
+        locationPrecision: coordinatesVerified ? "exact" : candidate.city ? "city" : "unknown",
         references,
         startsAt,
         endsAt,

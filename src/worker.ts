@@ -1,6 +1,7 @@
 import { runDiscoveryAgent } from "./lib/agent";
 import { ensureScheduledCoverage, nextDueQuery, recoverStaleQueries } from "./lib/discovery-queries";
 import { auditEventImages, backfillMissingEventImages, clearPageUrlsStoredAsImages } from "./lib/event-images";
+import { backfillExactEventLocations } from "./lib/event-locations";
 import { consolidateDuplicateEvents, promoteSpecificEventSources } from "./lib/events";
 import { ensureCanonicalTaxonomy, type CategorySlug } from "./lib/taxonomy";
 import { repairGenericEventSources } from "./lib/source-repair";
@@ -9,6 +10,7 @@ import { verifyNextEvent } from "./lib/verification";
 const interval = Math.max(15, Number(process.env.AGENT_INTERVAL_MINUTES ?? 15)) * 60_000;
 const queriesPerRun = Math.max(1, Number(process.env.AGENT_QUERIES_PER_RUN ?? 8));
 const imagesPerRun = Math.max(1, Number(process.env.AGENT_IMAGES_PER_RUN ?? 16));
+const locationsPerRun = Math.max(1, Number(process.env.AGENT_LOCATIONS_PER_RUN ?? 6));
 let running = false;
 
 async function runNonBlockingStep(label: string, action: () => Promise<unknown>) {
@@ -45,6 +47,7 @@ async function run() {
       if (result.skipped) break;
     }
     if (!handled) console.log("no discovery query is due");
+    console.log(await backfillExactEventLocations(locationsPerRun));
     console.log(await backfillMissingEventImages(imagesPerRun));
     console.log(await auditEventImages(Math.max(1, Math.floor(imagesPerRun / 4))));
   } catch (error) {

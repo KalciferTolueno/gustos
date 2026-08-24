@@ -6,6 +6,8 @@ import { coverageQueryDefinitions, normalizeDiscoveryQuery, queryIsFresh } from 
 import { extractEventImage, extractEventImages, hasSupportedImageSignature } from "./event-images";
 import { agentUsage } from "./agent";
 import { eventMapLocation } from "./event-map-location";
+import { musicGenresFromLabels } from "./music-genres";
+import { coordinatesAreInChile } from "./event-locations";
 import { consultedWebUrls } from "./web-evidence";
 
 describe("eventKey", () => {
@@ -178,9 +180,21 @@ describe("matchesEventSearch", () => {
 });
 
 describe("event map locations", () => {
-  it("uses exact coordinates when available and a labeled city fallback otherwise", () => {
-    expect(eventMapLocation({ id: "exact", city: "Santiago", latitude: -33.45, longitude: -70.66 })).toEqual({ position: [-33.45, -70.66], approximate: false });
-    expect(eventMapLocation({ id: "fallback", city: "Valparaíso" })?.approximate).toBe(true);
-    expect(eventMapLocation({ id: "unknown", city: "En algún lugar" })).toBeNull();
+  it("only maps coordinates verified as exact", () => {
+    expect(eventMapLocation({ latitude: -33.45, longitude: -70.66, locationPrecision: "exact" })).toEqual({ position: [-33.45, -70.66] });
+    expect(eventMapLocation({ latitude: -33.45, longitude: -70.66, locationPrecision: "city" })).toBeNull();
+    expect(eventMapLocation({ locationPrecision: "unknown" })).toBeNull();
+  });
+
+  it("rejects coordinates outside Chile before publishing a marker", () => {
+    expect(coordinatesAreInChile(-33.4489, -70.6693)).toBe(true);
+    expect(coordinatesAreInChile(-27.1127, -109.3497)).toBe(true);
+    expect(coordinatesAreInChile(0, 0)).toBe(false);
+  });
+});
+
+describe("music genre filters", () => {
+  it("keeps genres and excludes artist names and generic activities", () => {
+    expect(musicGenresFromLabels(["Klangkuenstler", "Música electrónica/techno", "fiesta", "BTS", "K-pop"])).toEqual(["Electrónica", "Techno", "K-pop"]);
   });
 });

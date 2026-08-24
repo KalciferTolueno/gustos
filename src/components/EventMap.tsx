@@ -19,6 +19,7 @@ export function EventMap({ events }: { events: EventCard[] }) {
     const location = eventMapLocation(event);
     return location ? [{ event, location }] : [];
   });
+  const pending = events.length - located.length;
 
   return (
     <div className="map-shell">
@@ -33,13 +34,12 @@ export function EventMap({ events }: { events: EventCard[] }) {
             <Popup>
               <strong>{event.title}</strong>
               <br />
-              {event.city} · {event.venue}
-              {location.approximate && <><br /><small>Ubicación aproximada</small></>}
+              {[event.venue, event.address, event.city].filter(Boolean).join(" · ")}
             </Popup>
           </Marker>
         ))}
       </MapContainer>
-      <div className="map-count"><b>{located.length}</b> lugares encontrados</div>
+      <div className="map-count"><b>{located.length}</b> ubicaciones exactas{pending > 0 ? ` · ${pending} pendientes de verificar` : ""}</div>
     </div>
   );
 }

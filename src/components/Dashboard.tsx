@@ -87,11 +87,11 @@ export function Dashboard({ events, demo, signedIn, userName, interestTopics, in
   const [detailLoading, setDetailLoading] = useState(false);
   const deferredQuery = useDeferredValue(query.trim());
   const topics = ["Todos", ...new Set(events.map((event) => event.categoryName))];
-  const subtopics = ["Todos", ...new Set(events.filter((event) => topic === "Todos" || event.categoryName === topic).flatMap((event) => event.topicNames).filter((name) => name !== topic))];
+  const subtopics = ["Todos", ...new Set(events.filter((event) => topic === "Todos" || event.categoryName === topic).flatMap((event) => event.filterNames).filter((name) => name !== topic))];
   const cities = ["Todo Chile", ...new Set(events.map((event) => event.city).filter((value): value is string => Boolean(value)))];
   const filtered = events.filter((event) => (
     (topic === "Todos" || event.categoryName === topic)
-    && (subtopic === "Todos" || event.topicNames.includes(subtopic))
+    && (subtopic === "Todos" || event.filterNames.includes(subtopic))
     && (city === "Todo Chile" || event.city === city)
     && (matchesEventSearch(event, deferredQuery) || discoveredEventIds.includes(event.id))
   ));
@@ -213,13 +213,15 @@ export function Dashboard({ events, demo, signedIn, userName, interestTopics, in
 
         <Tabs value={view} onValueChange={(value) => setView(value as "list" | "map")} id="eventos" className="scroll-mt-24 space-y-5">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div className="hide-scrollbar flex gap-2 overflow-x-auto pb-1">
-              {topics.map((item) => (
-                <Button key={item} onClick={() => { setTopic(item); setSubtopic("Todos"); }} variant={topic === item ? "default" : "outline"} size="sm" className="min-h-11 shrink-0 rounded-full">
-                  {topic === item && <Check />} {item}
-                </Button>
-              ))}
-              {topic !== "Todos" && subtopics.length > 1 && <Select value={subtopic} onValueChange={setSubtopic}><SelectTrigger className="w-48 shrink-0 rounded-full"><SelectValue placeholder="Subcategoría" /></SelectTrigger><SelectContent>{subtopics.map((item) => <SelectItem value={item} key={item}>{item}</SelectItem>)}</SelectContent></Select>}
+            <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="hide-scrollbar flex min-w-0 gap-2 overflow-x-auto pb-1">
+                {topics.map((item) => (
+                  <Button key={item} onClick={() => { setTopic(item); setSubtopic("Todos"); }} variant={topic === item ? "default" : "outline"} size="sm" className="min-h-11 shrink-0 rounded-full">
+                    {topic === item && <Check />} {item}
+                  </Button>
+                ))}
+              </div>
+              {topic !== "Todos" && subtopics.length > 1 && <Select value={subtopic} onValueChange={setSubtopic}><SelectTrigger aria-label={topic === "Música" ? "Filtrar por género musical" : "Filtrar por subcategoría"} className="w-full shrink-0 rounded-full sm:w-48"><SelectValue placeholder={topic === "Música" ? "Género musical" : "Subcategoría"} /></SelectTrigger><SelectContent>{subtopics.map((item) => <SelectItem value={item} key={item}>{item}</SelectItem>)}</SelectContent></Select>}
             </div>
             <div className="flex items-center justify-between gap-3">
               <p className="text-sm text-zinc-400" aria-live="polite">{filtered.length} resultado{filtered.length === 1 ? "" : "s"}{city !== "Todo Chile" ? ` en ${city}` : ""}</p>
@@ -280,7 +282,7 @@ function EventTile({ event, index, onOpen }: { event: EventCard; index: number; 
 }
 
 function EventDetail({ detail, fallback, loading }: { detail: EventDetailData | null; fallback: EventCard; loading: boolean }) {
-  const event = detail?.event ?? fallback;
+  const event = detail ? { ...fallback, ...detail.event, topicNames: detail.topicNames, filterNames: fallback.filterNames } : fallback;
   const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
   const image = event.imageUrl && event.imageUrl !== failedImageUrl ? event.imageUrl : null;
   return <div className="space-y-5"><div className="event-detail-visual relative h-56 overflow-hidden rounded-xl bg-zinc-900">{image && <Image src={image} alt="" fill unoptimized sizes="(max-width: 768px) 100vw, 768px" className="z-0 object-cover" onError={() => setFailedImageUrl(image)} />}{!image && <EventImageFallback categoryName={event.categoryName} />}<div className="absolute inset-x-0 bottom-0 z-10 p-5"><Badge variant="secondary">{eventStateLabels[event.eventState] ?? event.eventState}</Badge><DialogTitle className="mt-3 text-3xl">{event.title}</DialogTitle></div></div><p className="text-sm leading-7 text-zinc-300">{event.description}</p><div className="grid gap-3 rounded-xl border border-white/10 bg-white/4 p-4 text-sm text-zinc-300 sm:grid-cols-2"><span className="flex gap-2"><CalendarDays className="size-4 shrink-0" />{formatEventSchedule(event)}</span><span className="flex gap-2"><MapPin className="size-4 shrink-0" />{[event.venue, event.address, event.city, event.region].filter(Boolean).join(" · ")}</span>{event.priceLabel && <span className="flex gap-2"><Ticket className="size-4 shrink-0" />{event.priceLabel}</span>}<span className="flex gap-2"><Clock3 className="size-4 shrink-0" />Verificado {event.verifiedAt ? verifiedDateFormatter.format(new Date(event.verifiedAt)) : "pendiente"}</span></div>{event.statusReason && <div className="rounded-xl border border-amber-900 bg-amber-950 p-4 text-sm text-amber-50">{event.statusReason}</div>}<section><h3 className="font-medium">Fuentes y verificaciones</h3>{loading && <p className="mt-2 text-sm text-zinc-400">Cargando referencias...</p>}{!loading && !detail?.sources.length && <p className="mt-2 text-sm text-zinc-400">Solo hay una referencia disponible para este evento.</p>}<div className="mt-3 grid gap-3">{detail?.sources.map((source) => <div key={source.id} className="rounded-xl border border-white/10 p-4"><div className="flex items-center justify-between gap-3"><div><b className="text-sm">{source.name}</b>{source.isPrimary && <Badge variant="secondary" className="ml-2">Principal</Badge>}</div><Button asChild variant="outline" size="sm"><a href={source.url} target="_blank" rel="noreferrer">Abrir <ExternalLink /></a></Button></div><div className="mt-3 grid gap-2">{source.observations.slice(0, 3).map((observation) => <p key={observation.id} className="border-l border-white/10 pl-3 text-xs leading-5 text-zinc-400"><b className="text-zinc-300">{eventStateLabels[observation.observedState] ?? observation.observedState}</b> · {observation.evidence} · {dateOnlyFormatter.format(new Date(observation.checkedAt))}</p>)}</div></div>)}</div></section></div>;
