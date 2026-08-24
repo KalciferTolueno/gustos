@@ -1,6 +1,7 @@
 import { runDiscoveryAgent } from "./lib/agent";
 import { ensureScheduledCoverage, nextDueQuery, recoverStaleQueries } from "./lib/discovery-queries";
 import { backfillMissingEventImages } from "./lib/event-images";
+import { consolidateDuplicateEvents } from "./lib/events";
 import { ensureCanonicalTaxonomy, type CategorySlug } from "./lib/taxonomy";
 import { verifyNextEvent } from "./lib/verification";
 
@@ -12,8 +13,9 @@ async function run() {
     await ensureCanonicalTaxonomy();
     await ensureScheduledCoverage();
     await recoverStaleQueries();
-    console.log(await backfillMissingEventImages());
+    console.log(await consolidateDuplicateEvents());
     console.log(await verifyNextEvent());
+    console.log(await backfillMissingEventImages(4));
     let handled = false;
     for (let index = 0; index < 4; index += 1) {
       const query = await nextDueQuery();

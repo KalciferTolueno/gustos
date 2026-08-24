@@ -107,7 +107,7 @@ export async function verifyNextEvent() {
     const endsAt = result.endsAt ? new Date(result.endsAt) : null;
     const canonicalStartsAt = startsAt && trustedOfficial ? startsAt : target.event.startsAt;
     const canonicalVenue = result.venue && trustedOfficial ? result.venue : target.event.venue;
-    const identityKey = eventIdentityKey(target.event.title, canonicalStartsAt, canonicalVenue, target.event.city);
+    const identityKey = eventIdentityKey(target.event.title, canonicalStartsAt, target.event.city, canonicalVenue);
     const externalKey = eventKey(target.event.title, canonicalStartsAt, target.event.sourceUrl, canonicalVenue, target.event.city);
     const [identityCollision] = await db.select({ id: events.id }).from(events).where(eq(events.identityKey, identityKey)).limit(1);
     const [externalCollision] = await db.select({ id: events.id }).from(events).where(eq(events.externalKey, externalKey)).limit(1);

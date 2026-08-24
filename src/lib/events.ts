@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
-import { and, asc, eq, gt, gte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, or, sql } from "drizzle-orm";
 import { getDb } from "../db";
-import { eventSourceObservations, eventSources, eventTopics, events, topics, type EventRow } from "../db/schema";
+import { discoveryQueryEvents, eventSourceObservations, eventSources, eventTopics, events, topics, type EventRow } from "../db/schema";
 import { categoryNames, topicSlug, type CategorySlug } from "./taxonomy";
 
 export type EventCard = Pick<
@@ -184,8 +184,97 @@ export function acceptedEventState(state: "scheduled" | "postponed" | "cancelled
   return official && state !== "unknown" ? state : null;
 }
 
-export function eventIdentityKey(title: string, startsAt: Date, venue?: string | null, city?: string | null) {
-  return createHash("md5").update(`${normalizedText(title)}|${normalizedText(venue)}|${normalizedText(city)}|${startsAt.toISOString().slice(0, 16)}`).digest("hex");
+export function eventOccurrenceKey(title: string, startsAt: Date) {
+  return `${normalizedText(title)}|${startsAt.toISOString().slice(0, 16)}`;
+}
+
+function compatibleLocation(first?: string | null, second?: string | null) {
+  const firstValue = normalizedText(first);
+  const secondValue = normalizedText(second);
+  return !firstValue || !secondValue || firstValue === secondValue || firstValue.includes(secondValue) || secondValue.includes(firstValue);
+}
+
+export function sameEventOccurrence(first: { title: string; startsAt: Date; city?: string | null; venue?: string | null }, second: { title: string; startsAt: Date; city?: string | null; venue?: string | null }) {
+  const firstCity = normalizedText(first.city);
+  const secondCity = normalizedText(second.city);
+  return eventOccurrenceKey(first.title, first.startsAt) === eventOccurrenceKey(second.title, second.startsAt) && (!firstCity || !secondCity || firstCity === secondCity) && compatibleLocation(first.venue, second.venue);
+}
+
+export function eventIdentityKey(title: string, startsAt: Date, city?: string | null, venue?: string | null) {
+  return createHash("md5").update(`${eventOccurrenceKey(title, startsAt)}|${normalizedText(city)}|${normalizedText(venue)}`).digest("hex");
+}
+
+export async function consolidateDuplicateEvents(limit = 20) {
+  const db = getDb();
+  const rows = await db.select().from(events).orderBy(asc(events.createdAt));
+  const occurrenceGroups = new Map<string, typeof rows>();
+  for (const event of rows) {
+    const key = eventOccurrenceKey(event.title, event.startsAt);
+    occurrenceGroups.set(key, [...(occurrenceGroups.get(key) ?? []), event]);
+  }
+  const groups = [...occurrenceGroups.values()].flatMap((eventsAtSameMinute) => {
+    const clusters: Array<typeof rows> = [];
+    const specificFirst = eventsAtSameMinute.sort((a, b) => Number(Boolean(b.city)) + Number(Boolean(b.venue)) - Number(Boolean(a.city)) - Number(Boolean(a.venue)));
+    for (const event of specificFirst) {
+      const matches = clusters.filter((cluster) => sameEventOccurrence(cluster[0], event));
+      if (matches.length === 1) matches[0].push(event);
+      else clusters.push([event]);
+    }
+    return clusters;
+  });
+  let merged = 0;
+  for (const group of groups.filter((items) => items.length > 1).slice(0, limit)) {
+    group.sort((a, b) => (Number(b.status === "published") * 2 + Number(b.status === "pending")) - (Number(a.status === "published") * 2 + Number(a.status === "pending")) || b.confidence - a.confidence || Number(Boolean(b.imageUrl)) - Number(Boolean(a.imageUrl)) || a.createdAt.getTime() - b.createdAt.getTime());
+    const [keeper, ...duplicates] = group;
+    const canonicalCity = keeper.city ?? group.find((event) => event.city)?.city;
+    const canonicalVenue = keeper.venue ?? group.find((event) => event.venue)?.venue;
+    const identityKey = eventIdentityKey(keeper.title, keeper.startsAt, canonicalCity, canonicalVenue);
+    const duplicateIds = duplicates.map((event) => event.id);
+    await db.transaction(async (tx) => {
+      const topicRows = await tx.select({ topicId: eventTopics.topicId }).from(eventTopics).where(inArray(eventTopics.eventId, duplicateIds));
+      for (const topic of topicRows) await tx.insert(eventTopics).values({ eventId: keeper.id, topicId: topic.topicId }).onConflictDoNothing();
+      const queryRows = await tx.select({ queryId: discoveryQueryEvents.queryId }).from(discoveryQueryEvents).where(inArray(discoveryQueryEvents.eventId, duplicateIds));
+      for (const query of queryRows) await tx.insert(discoveryQueryEvents).values({ eventId: keeper.id, queryId: query.queryId }).onConflictDoNothing();
+
+      const sourceRows = await tx.select().from(eventSources).where(inArray(eventSources.eventId, [keeper.id, ...duplicateIds])).orderBy(desc(eventSources.isPrimary), asc(eventSources.firstSeenAt));
+      const keptSources = new Map(sourceRows.filter((source) => source.eventId === keeper.id).map((source) => [source.normalizedUrl, source]));
+      for (const source of sourceRows.filter((item) => item.eventId !== keeper.id)) {
+        const existing = keptSources.get(source.normalizedUrl);
+        if (existing) {
+          await tx.update(eventSourceObservations).set({ eventSourceId: existing.id }).where(eq(eventSourceObservations.eventSourceId, source.id));
+          await tx.delete(eventSources).where(eq(eventSources.id, source.id));
+        } else {
+          await tx.update(eventSources).set({ eventId: keeper.id, isPrimary: false }).where(eq(eventSources.id, source.id));
+          keptSources.set(source.normalizedUrl, source);
+        }
+      }
+      await tx.delete(events).where(inArray(events.id, duplicateIds));
+      const best = group.find((event) => event.imageUrl);
+      const longestDescription = group.map((event) => event.description).sort((a, b) => b.length - a.length)[0];
+      await tx.update(events).set({
+        identityKey,
+        imageUrl: keeper.imageUrl ?? best?.imageUrl,
+        description: longestDescription,
+        endsAt: keeper.endsAt ?? group.find((event) => event.endsAt)?.endsAt,
+        categoryId: keeper.categoryId ?? group.find((event) => event.categoryId)?.categoryId,
+        city: canonicalCity,
+        region: keeper.region ?? group.find((event) => event.region)?.region,
+        venue: canonicalVenue,
+        address: keeper.address ?? group.find((event) => event.address)?.address,
+        latitude: keeper.latitude ?? group.find((event) => event.latitude != null)?.latitude,
+        longitude: keeper.longitude ?? group.find((event) => event.longitude != null)?.longitude,
+        priceLabel: keeper.priceLabel ?? group.find((event) => event.priceLabel)?.priceLabel,
+        submittedBy: keeper.submittedBy ?? group.find((event) => event.submittedBy)?.submittedBy,
+        eventState: group.filter((event) => event.eventState !== "scheduled").sort((a, b) => b.confidence - a.confidence)[0]?.eventState ?? keeper.eventState,
+        statusReason: group.filter((event) => event.eventState !== "scheduled").sort((a, b) => b.confidence - a.confidence)[0]?.statusReason ?? keeper.statusReason,
+        status: group.some((event) => event.status === "published") ? "published" : group.some((event) => event.status === "pending") ? "pending" : keeper.status,
+        confidence: Math.max(...group.map((event) => event.confidence)),
+        updatedAt: new Date(),
+      }).where(eq(events.id, keeper.id));
+    });
+    merged += duplicateIds.length;
+  }
+  return { duplicatesMerged: merged };
 }
 
 export async function listEvents(): Promise<{ events: EventCard[]; demo: boolean }> {
@@ -235,7 +324,7 @@ export async function saveCandidate(candidate: {
 }) {
   const db = getDb();
   const externalKey = eventKey(candidate.title, candidate.startsAt, candidate.sourceUrl, candidate.venue, candidate.city);
-  const identityKey = eventIdentityKey(candidate.title, candidate.startsAt, candidate.venue, candidate.city);
+  const identityKey = eventIdentityKey(candidate.title, candidate.startsAt, candidate.city, candidate.venue);
   const status = candidate.confidence >= 85 ? "published" : "pending";
   const { topicNames, artistNames = [], destinationNames = [], references = [], categorySlug, ...event } = candidate;
   const now = new Date();
@@ -249,19 +338,23 @@ export async function saveCandidate(candidate: {
       identityKey: events.identityKey,
       title: events.title,
       startsAt: events.startsAt,
-      venue: events.venue,
       city: events.city,
-    }).from(eventSources).innerJoin(events, eq(events.id, eventSources.eventId)).where(and(eq(eventSources.normalizedUrl, primaryUrl), eq(eventSources.isPrimary, true))).limit(1);
+      venue: events.venue,
+    }).from(eventSources).innerJoin(events, eq(events.id, eventSources.eventId)).where(eq(eventSources.normalizedUrl, primaryUrl)).limit(1);
     const [identityMatch] = await tx.select({ id: events.id }).from(events).where(eq(events.identityKey, identityKey)).limit(1);
     const [externalMatch] = await tx.select({ id: events.id }).from(events).where(and(eq(events.externalKey, externalKey), eq(events.identityKey, identityKey))).limit(1);
-    const sourceIdentity = sourceMatch && eventIdentityKey(sourceMatch.title, sourceMatch.startsAt, sourceMatch.venue, sourceMatch.city);
-    const existingId = identityMatch?.id ?? externalMatch?.id ?? (sourceMatch && sourceIdentity === identityKey ? sourceMatch.eventId : undefined);
-    const [existing] = existingId ? await tx.select({ status: events.status, identityKey: events.identityKey, imageUrl: events.imageUrl, categoryId: events.categoryId }).from(events).where(eq(events.id, existingId)).limit(1) : [];
-    const existingIdentity = !identityMatch || identityMatch.id === existingId ? identityKey : null;
+    const occurrenceRows = await tx.select({ id: events.id, title: events.title, startsAt: events.startsAt, city: events.city, venue: events.venue }).from(events).where(eq(events.startsAt, candidate.startsAt));
+    const compatibleOccurrences = occurrenceRows.filter((item) => sameEventOccurrence(item, candidate));
+    const occurrenceCities = new Set(compatibleOccurrences.map((item) => normalizedText(item.city)).filter(Boolean));
+    const occurrenceMatch = normalizedText(candidate.city) || occurrenceCities.size <= 1 ? compatibleOccurrences[0] : undefined;
+    const sourceMatches = sourceMatch && sameEventOccurrence(sourceMatch, candidate);
+    const existingId = identityMatch?.id ?? externalMatch?.id ?? occurrenceMatch?.id ?? (sourceMatch && sourceMatches ? sourceMatch.eventId : undefined);
+    const [existing] = existingId ? await tx.select({ status: events.status, identityKey: events.identityKey, imageUrl: events.imageUrl, categoryId: events.categoryId, city: events.city, region: events.region, venue: events.venue, address: events.address }).from(events).where(eq(events.id, existingId)).limit(1) : [];
+    const existingIdentity = existing?.status !== "pending" && existing?.identityKey ? existing.identityKey : !identityMatch || identityMatch.id === existingId ? identityKey : null;
     const [saved] = existing
       ? await tx.update(events).set(existing.status === "pending"
         ? { ...event, externalKey, identityKey: existingIdentity, categoryId: category.id, status, verifiedAt: now, updatedAt: now }
-        : { identityKey: existingIdentity, categoryId: existing.categoryId ?? category.id, imageUrl: existing.imageUrl ?? candidate.imageUrl, updatedAt: now }).where(eq(events.id, existingId)).returning({ id: events.id, status: events.status })
+        : { identityKey: existingIdentity, categoryId: existing.categoryId ?? category.id, imageUrl: existing.imageUrl ?? candidate.imageUrl, city: existing.city ?? candidate.city, region: existing.region ?? candidate.region, venue: existing.venue ?? candidate.venue, address: existing.address ?? candidate.address, updatedAt: now }).where(eq(events.id, existingId)).returning({ id: events.id, status: events.status })
       : await tx.insert(events).values({ ...event, externalKey, identityKey, categoryId: category.id, status, eventState: "scheduled", discoveredByAi: true, verifiedAt: now }).returning({ id: events.id, status: events.status });
 
     const labels: Array<[string, string, number]> = [
@@ -276,25 +369,34 @@ export async function saveCandidate(candidate: {
       await tx.insert(eventTopics).values({ eventId: saved.id, topicId: topic.id }).onConflictDoNothing();
     }
 
-    await tx.update(eventSources).set({ isPrimary: false }).where(eq(eventSources.eventId, saved.id));
     const allReferences = [{ name: candidate.sourceName, url: candidate.sourceUrl }, ...references];
     const seen = new Set<string>();
+    const existingSources = await tx.select({ id: eventSources.id, normalizedUrl: eventSources.normalizedUrl, isPrimary: eventSources.isPrimary }).from(eventSources).where(eq(eventSources.eventId, saved.id)).orderBy(desc(eventSources.isPrimary), asc(eventSources.firstSeenAt)).limit(4);
+    let sourceCount = existingSources.length;
+    let primarySourceId: number | undefined;
     for (const reference of allReferences) {
       const normalizedUrl = normalizedSourceUrl(reference.url);
       if (!normalizedUrl || seen.has(normalizedUrl)) continue;
       seen.add(normalizedUrl);
+      const existingSource = existingSources.find((source) => source.normalizedUrl === normalizedUrl);
+      if (!existingSource && sourceCount >= 4 && normalizedUrl !== primaryUrl) continue;
       const [source] = await tx.insert(eventSources).values({
         eventId: saved.id,
         name: reference.name,
         url: reference.url,
         normalizedUrl,
-        isPrimary: normalizedUrl === primaryUrl,
+        isPrimary: false,
         lastCheckedAt: now,
         nextCheckAt,
       }).onConflictDoUpdate({
         target: [eventSources.eventId, eventSources.normalizedUrl],
-        set: { name: reference.name, url: reference.url, isPrimary: normalizedUrl === primaryUrl, status: "active", lastCheckedAt: now, nextCheckAt },
+        set: { name: reference.name, url: reference.url, status: "active", lastCheckedAt: now, nextCheckAt },
       }).returning({ id: eventSources.id });
+      if (!existingSource) {
+        sourceCount += 1;
+        existingSources.push({ id: source.id, normalizedUrl, isPrimary: false });
+      }
+      if (normalizedUrl === primaryUrl) primarySourceId = source.id;
       await tx.insert(eventSourceObservations).values({
         eventSourceId: source.id,
         observedTitle: candidate.title,
@@ -305,6 +407,10 @@ export async function saveCandidate(candidate: {
         confidence: candidate.confidence,
         evidence: "Discovered and verified through web search",
       });
+    }
+    if (primarySourceId) {
+      await tx.update(eventSources).set({ isPrimary: false }).where(eq(eventSources.eventId, saved.id));
+      await tx.update(eventSources).set({ isPrimary: true }).where(eq(eventSources.id, primarySourceId));
     }
     return { status: saved.status, eventId: saved.id };
   });

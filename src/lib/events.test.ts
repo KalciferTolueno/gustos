@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { acceptedEventState, eventHasNotEnded, eventIdentityKey, eventKey, normalizedSourceUrl } from "./events";
+import { acceptedEventState, eventHasNotEnded, eventIdentityKey, eventKey, normalizedSourceUrl, sameEventOccurrence } from "./events";
 import { matchesEventSearch } from "./event-search";
 import { hashPassword, verifyPassword } from "./passwords";
 import { normalizeDiscoveryQuery, queryIsFresh } from "./discovery-queries";
-import { extractEventImage } from "./event-images";
+import { extractEventImage, extractEventImages } from "./event-images";
 import { agentUsage } from "./agent";
 
 describe("eventKey", () => {
@@ -21,13 +21,20 @@ describe("eventKey", () => {
   });
 
   it("normalizes identity text without merging recurring dates", () => {
-    expect(eventIdentityKey("Festival Ñuble", new Date("2027-03-01T20:00:00Z"), "Teatro", "Chillán"))
-      .not.toBe(eventIdentityKey("Festival Nuble", new Date("2027-03-15T20:00:00Z"), "Teatro", "Chillan"));
+    expect(eventIdentityKey("Festival Ñuble", new Date("2027-03-01T20:00:00Z"), "Chillán", "Teatro"))
+      .not.toBe(eventIdentityKey("Festival Nuble", new Date("2027-03-15T20:00:00Z"), "Chillan", "Teatro"));
     expect(normalizedSourceUrl("https://www.example.com/evento/?utm_source=test#tickets")).toBe("https://example.com/evento?utm_source=test");
     expect(normalizedSourceUrl("https://www.example.com/evento/?utm_source=test#tickets", true)).toBe("https://example.com/evento");
     expect(normalizedSourceUrl("https://example.com/evento?id=1")).not.toBe(normalizedSourceUrl("https://example.com/evento?id=2"));
-    expect(eventIdentityKey("Función", new Date("2027-03-01T20:00:00Z"), "Teatro", "Chillán"))
-      .not.toBe(eventIdentityKey("Función", new Date("2027-03-01T22:00:00Z"), "Teatro", "Chillán"));
+    expect(eventIdentityKey("Función", new Date("2027-03-01T20:00:00Z"), "Chillán", "Teatro"))
+      .not.toBe(eventIdentityKey("Función", new Date("2027-03-01T22:00:00Z"), "Chillán", "Teatro"));
+    expect(eventIdentityKey("RushCon 2026", new Date("2027-03-01T20:00:00Z"), "Santiago", "Centro Cultural"))
+      .toBe(eventIdentityKey("rushcon 2026", new Date("2027-03-01T20:00:00Z"), "Santiago", "Centro Cultural"));
+    expect(eventIdentityKey("RushCon 2026", new Date("2027-03-01T20:00:00Z"), "Santiago", "Centro Cultural"))
+      .not.toBe(eventIdentityKey("RushCon 2026", new Date("2027-03-01T20:00:00Z"), "Valparaíso", "Centro Cultural"));
+    const occurrence = { title: "RushCon 2026", startsAt: new Date("2027-03-01T20:00:00Z"), city: "Santiago" };
+    expect(sameEventOccurrence({ ...occurrence, venue: "Centro Cultural" }, { ...occurrence, venue: "Centro Cultural de Santiago" })).toBe(true);
+    expect(sameEventOccurrence({ ...occurrence, venue: "Cine A" }, { ...occurrence, venue: "Cine B" })).toBe(false);
   });
 });
 
@@ -61,6 +68,15 @@ describe("event images", () => {
   it("extracts an official social image regardless of attribute order", () => {
     expect(extractEventImage('<meta content="/pawstral.jpg?size=large&amp;v=2" property="og:image">', "https://pawstral.cl/evento"))
       .toBe("https://pawstral.cl/pawstral.jpg?size=large&v=2");
+  });
+
+  it("collects structured, social, and page images for AI selection", () => {
+    const html = '<script type="application/ld+json">{"@type":"Event","image":"/poster.jpg"}</script><meta property="og:image" content="/social.webp"><img data-src="/gallery.png">';
+    expect(extractEventImages(html, "https://example.com/evento")).toEqual([
+      "https://example.com/poster.jpg",
+      "https://example.com/social.webp",
+      "https://example.com/gallery.png",
+    ]);
   });
 });
 

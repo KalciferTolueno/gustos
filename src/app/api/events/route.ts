@@ -31,7 +31,7 @@ export async function POST(request: Request) {
       ...data,
       startsAt,
       externalKey: eventKey(data.title, startsAt, data.sourceUrl, data.venue, data.city),
-      identityKey: eventIdentityKey(data.title, startsAt, data.venue, data.city),
+      identityKey: eventIdentityKey(data.title, startsAt, data.city, data.venue),
       sourceName: `Comunidad · ${topic}`,
       status: "pending",
       submittedBy: user.id,
