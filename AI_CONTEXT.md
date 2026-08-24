@@ -44,6 +44,7 @@ Rutas principales:
 - `/api/auth/[...nextauth]`: Auth.js.
 - `/api/register`: alta por correo y contraseña.
 - `/api/health`: health check.
+- `/api/admin/catalog-audit`: ejecuta manualmente el siguiente registro pendiente de la auditoría integral; requiere sesión administradora.
 
 Sin `DATABASE_URL`, la portada usa eventos de demostración. El agente requiere PostgreSQL y `OPENAI_API_KEY`.
 
@@ -55,9 +56,10 @@ Sin `DATABASE_URL`, la portada usa eventos de demostración. El agente requiere 
 2. Mantiene las consultas programadas de cobertura.
 3. Recupera consultas que quedaron bloqueadas en `running`.
 4. Consolida hasta 20 grupos de eventos duplicados.
-5. Verifica el siguiente evento vencido.
-6. Completa imágenes de hasta 4 eventos sin imagen.
-7. Ejecuta hasta 4 consultas de descubrimiento vencidas.
+5. Audita uno por uno los eventos existentes que no hayan pasado la versión actual de reglas.
+6. Verifica el siguiente evento vencido.
+7. Completa imágenes de hasta 4 eventos sin imagen.
+8. Ejecuta hasta 4 consultas de descubrimiento vencidas.
 
 Mantener una sola réplica del worker. `beginAgentRun()` también usa un bloqueo global en PostgreSQL para evitar carreras de presupuesto.
 
@@ -108,6 +110,8 @@ Las consultas de usuario repetidas al menos 3 veces y activas durante la última
 
 `saveCandidate()` en `src/lib/events.ts` es el punto común para guardar candidatos del agente. Los eventos con confianza `>= 85` se publican; los demás quedan pendientes.
 
+Antes de publicar, `src/lib/event-source-validation.ts` descarga la página viva con protección SSRF y exige que su contenido contenga los términos distintivos del título. Una URL encontrada o citada por el buscador no basta: si la página cambió, fue reutilizada o sirve contenido distinto al índice, el evento no se publica. El worker rota por las fuentes guardadas; pone en pendiente cualquier evento cuya página ya no corresponda y solo lo republica tras encontrar y validar otra fuente.
+
 ## Deduplicación
 
 La deduplicación está en `src/lib/events.ts` y cubre datos nuevos e históricos.
@@ -153,6 +157,12 @@ No usar imágenes de stock, genéricas ni de otros eventos. `src/lib/event-image
 
 El worker ejecuta el backfill después de la verificación para no retrasar comprobaciones temporales. Aprobar un evento desde `/admin` también llama `ensureEventImage()`; un fallo de imagen se registra pero no revierte una aprobación ya guardada.
 
+## Auditoría completa del catálogo
+
+`src/lib/catalog-audit.ts` recorre uno por uno todos los eventos publicados, actuales o futuros. Cada registro pasa por validación de la página viva, verificación temporal, selección visual y ubicación. `events.catalog_audit_version` y `catalog_audited_at` forman un cursor persistente: los reinicios continúan donde quedó el worker y los fallos se reintentan sin bloquear el resto del catálogo. Una fuente incorrecta pone el evento en pendiente inmediatamente; una imagen dudosa se elimina; las coordenadas solo sobreviven si son exactas y están en Chile.
+
+Cuando una nueva corrección deba aplicarse retroactivamente, incrementar `CATALOG_AUDIT_VERSION`. La variable `AGENT_CATALOG_AUDITS_PER_RUN` controla cuántos registros se revisan por ciclo (1 por defecto para limitar costo y carga). Las actualizaciones relevantes y aprobaciones manuales reinician la versión del registro a 0.
+
 ## Verificación
 
 `src/lib/verification.ts` revisa fuentes por proximidad del evento:
@@ -196,6 +206,7 @@ No editar snapshots de Drizzle manualmente salvo una razón concreta y revisada.
 - El seed crea/actualiza `admin@datito.local` cuando existe `ADMIN_PASSWORD` de al menos 12 caracteres.
 - Nunca guardar la contraseña administrativa en Git.
 - Panel administrativo: `/admin`.
+- El panel muestra los eventos restantes de `CATALOG_AUDIT_VERSION` y permite auditar manualmente el siguiente registro sin esperar al worker.
 
 ## Variables de entorno
 
@@ -215,7 +226,7 @@ Control del agente:
 - `AGENT_INTERVAL_MINUTES` controla el ciclo del worker (15 minutos por defecto).
 - `AGENT_SEARCHES_PER_DAY` y `AGENT_SEARCHES_PER_MONTH`: `0` significa sin límite.
 - `AGENT_BOOTSTRAP_SEARCHES_PER_DAY`: `0` también significa sin límite durante la carga inicial.
-- `AGENT_SEARCHES_PER_RUN`, `AGENT_SEARCHES_PER_QUERY`, `AGENT_SEARCHES_PER_COVERAGE_QUERY`, `AGENT_QUERIES_PER_RUN`, `AGENT_IMAGES_PER_RUN` y `AGENT_IMAGE_SEARCHES_PER_EVENT` controlan la intensidad de cada ciclo.
+- `AGENT_SEARCHES_PER_RUN`, `AGENT_SEARCHES_PER_QUERY`, `AGENT_SEARCHES_PER_COVERAGE_QUERY`, `AGENT_QUERIES_PER_RUN`, `AGENT_IMAGES_PER_RUN`, `AGENT_IMAGE_SEARCHES_PER_EVENT` y `AGENT_CATALOG_AUDITS_PER_RUN` controlan la intensidad de cada ciclo.
 - Las tarifas `OPENAI_*_USD_*` alimentan el costo estimado del panel; deben reflejar el modelo/proveedor real.
 
 Los límites de Datito no reemplazan el límite de gasto configurado en OpenAI.

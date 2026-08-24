@@ -6,11 +6,13 @@ import { consolidateDuplicateEvents, promoteSpecificEventSources } from "./lib/e
 import { ensureCanonicalTaxonomy, type CategorySlug } from "./lib/taxonomy";
 import { repairGenericEventSources } from "./lib/source-repair";
 import { verifyNextEvent } from "./lib/verification";
+import { auditExistingEvents } from "./lib/catalog-audit";
 
 const interval = Math.max(15, Number(process.env.AGENT_INTERVAL_MINUTES ?? 15)) * 60_000;
 const queriesPerRun = Math.max(1, Number(process.env.AGENT_QUERIES_PER_RUN ?? 8));
 const imagesPerRun = Math.max(1, Number(process.env.AGENT_IMAGES_PER_RUN ?? 16));
 const locationsPerRun = Math.max(1, Number(process.env.AGENT_LOCATIONS_PER_RUN ?? 6));
+const catalogAuditsPerRun = Math.max(1, Number(process.env.AGENT_CATALOG_AUDITS_PER_RUN ?? 1));
 let running = false;
 
 async function runNonBlockingStep(label: string, action: () => Promise<unknown>) {
@@ -33,6 +35,7 @@ async function run() {
     await ensureScheduledCoverage();
     await recoverStaleQueries();
     console.log(await consolidateDuplicateEvents());
+    await runNonBlockingStep("catalog audit", () => auditExistingEvents(catalogAuditsPerRun));
     console.log(await promoteSpecificEventSources());
     console.log(await repairGenericEventSources(4));
     console.log(await clearPageUrlsStoredAsImages());

@@ -124,6 +124,8 @@ export const events = pgTable(
     submittedBy: text("submitted_by").references(() => users.id, { onDelete: "set null" }),
     discoveredByAi: boolean("discovered_by_ai").notNull().default(false),
     verifiedAt: timestamp("verified_at", { mode: "date", withTimezone: true }),
+    catalogAuditVersion: integer("catalog_audit_version").notNull().default(0),
+    catalogAuditedAt: timestamp("catalog_audited_at", { mode: "date", withTimezone: true }),
     createdAt: timestamp("created_at", { mode: "date", withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true }).notNull().defaultNow(),
   },
@@ -134,6 +136,7 @@ export const events = pgTable(
     index("events_city_idx").on(table.city),
     index("events_status_idx").on(table.status),
     index("events_category_idx").on(table.categoryId),
+    index("events_catalog_audit_idx").on(table.catalogAuditVersion, table.startsAt),
   ],
 );
 

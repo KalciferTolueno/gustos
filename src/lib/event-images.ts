@@ -3,7 +3,7 @@ import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { isIP } from "node:net";
 import OpenAI from "openai";
-import { and, asc, desc, eq, gt, isNotNull, isNull, or } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, isNotNull, isNull, or } from "drizzle-orm";
 import { getDb } from "../db";
 import { eventSources, events } from "../db/schema";
 import { agentUsage, beginAgentRun, finishAgentRun } from "./agent";
@@ -247,13 +247,28 @@ export async function ensureEventImage(id: string) {
   return imageUrl;
 }
 
+export async function auditEventImage(id: string) {
+  const db = getDb();
+  const [event] = await db.select({ id: events.id, title: events.title, imageUrl: events.imageUrl, status: events.status }).from(events).where(eq(events.id, id)).limit(1);
+  if (!event || event.status !== "published" || !process.env.OPENAI_API_KEY) return { checked: false as const, corrected: false };
+  const sourcesForEvent = await db.select({ url: eventSources.url }).from(eventSources).where(and(eq(eventSources.eventId, id), eq(eventSources.status, "active"))).orderBy(desc(eventSources.isPrimary), asc(eventSources.firstSeenAt)).limit(4);
+  try {
+    const imageUrl = await selectMatchingEventImage(event.title, sourcesForEvent.map((source) => source.url), event.imageUrl);
+    await db.update(events).set({ imageUrl, updatedAt: new Date() }).where(eq(events.id, id));
+    return { checked: true as const, corrected: imageUrl !== event.imageUrl };
+  } catch {
+    await db.update(events).set({ updatedAt: new Date() }).where(eq(events.id, id));
+    return { checked: false as const, corrected: false };
+  }
+}
+
 export async function backfillMissingEventImages(limit = 12) {
   const db = getDb();
   const now = new Date();
   const rows = await db.select({ id: events.id }).from(events).where(and(
     eq(events.status, "published"),
     isNull(events.imageUrl),
-    or(gt(events.startsAt, now), eq(events.eventState, "postponed")),
+    or(gt(events.startsAt, now), gte(events.endsAt, now), eq(events.eventState, "postponed")),
   )).orderBy(asc(events.updatedAt)).limit(limit);
   let updated = 0;
   for (const event of rows) {
@@ -287,15 +302,9 @@ export async function auditEventImages(limit = 6) {
   let checked = 0;
   let corrected = 0;
   for (const event of rows) {
-    const sourcesForEvent = await db.select({ url: eventSources.url }).from(eventSources).where(eq(eventSources.eventId, event.id)).orderBy(desc(eventSources.isPrimary), asc(eventSources.firstSeenAt)).limit(4);
-    try {
-      const imageUrl = await selectMatchingEventImage(event.title, sourcesForEvent.map((source) => source.url), event.imageUrl);
-      await db.update(events).set({ imageUrl, updatedAt: new Date() }).where(eq(events.id, event.id));
-      checked += 1;
-      if (imageUrl !== event.imageUrl) corrected += 1;
-    } catch {
-      await db.update(events).set({ updatedAt: new Date() }).where(eq(events.id, event.id));
-    }
+    const result = await auditEventImage(event.id);
+    if (result.checked) checked += 1;
+    if (result.corrected) corrected += 1;
     if (checked >= limit) break;
   }
   return { checked, corrected };

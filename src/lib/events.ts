@@ -4,6 +4,7 @@ import { getDb } from "../db";
 import { discoveryQueryEvents, eventSourceObservations, eventSources, eventTopics, events, topics, type EventRow } from "../db/schema";
 import { categoryNames, topicSlug, type CategorySlug } from "./taxonomy";
 import { musicGenresFromLabels } from "./music-genres";
+import { eventSourceContainsEvent } from "./event-source-validation";
 
 export type EventCard = Pick<
   EventRow,
@@ -200,6 +201,7 @@ export function isSpecificEventSourceUrl(value: string, eventTitle?: string) {
     const url = new URL(value);
     const path = url.pathname.replace(/\/$/, "").toLocaleLowerCase("en-US");
     const host = url.hostname.replace(/^www\./, "").toLocaleLowerCase("en-US");
+    if (host === "ogts.cl" && path === "/ogts.php") return false;
     if (host === "puntoticket.com" && ["/", "/todos", "/inicio", "/home"].includes(path || "/")) return false;
     if (!["", "/", "/inicio", "/home", "/index"].includes(path)) return true;
     return dedicatedEventDomain(host, eventTitle);
@@ -389,6 +391,8 @@ export async function consolidateDuplicateEvents(limit = Number.POSITIVE_INFINIT
         statusReason: group.filter((event) => event.eventState !== "scheduled").sort((a, b) => b.confidence - a.confidence)[0]?.statusReason ?? keeper.statusReason,
         status: group.some((event) => event.status === "published") ? "published" : group.some((event) => event.status === "pending") ? "pending" : keeper.status,
         confidence: Math.max(...group.map((event) => event.confidence)),
+        catalogAuditVersion: 0,
+        catalogAuditedAt: null,
         updatedAt: new Date(),
       }).where(eq(events.id, keeper.id));
     });
@@ -404,9 +408,15 @@ export async function promoteSpecificEventSources(limit = 24) {
   for (const event of rows) {
     if (isSpecificEventSourceUrl(event.sourceUrl, event.title)) continue;
     const sourcesForEvent = await db.select({ name: eventSources.name, url: eventSources.url }).from(eventSources).where(eq(eventSources.eventId, event.id)).orderBy(desc(eventSources.isPrimary), asc(eventSources.firstSeenAt)).limit(4);
-    const directSource = sourcesForEvent.find((source) => isSpecificEventSourceUrl(source.url, event.title));
+    let directSource: (typeof sourcesForEvent)[number] | undefined;
+    for (const source of sourcesForEvent) {
+      if (!isSpecificEventSourceUrl(source.url, event.title)) continue;
+      try {
+        if (await eventSourceContainsEvent(source.url, event.title)) { directSource = source; break; }
+      } catch { /* An unreachable or unsafe source cannot become primary. */ }
+    }
     if (!directSource) continue;
-    await db.update(events).set({ sourceName: directSource.name, sourceUrl: directSource.url, imageUrl: null, updatedAt: new Date() }).where(eq(events.id, event.id));
+    await db.update(events).set({ sourceName: directSource.name, sourceUrl: directSource.url, imageUrl: null, catalogAuditVersion: 0, catalogAuditedAt: null, updatedAt: new Date() }).where(eq(events.id, event.id));
     upgraded += 1;
     if (upgraded >= limit) break;
   }
@@ -430,7 +440,7 @@ export async function listEvents(): Promise<{ events: EventCard[]; demo: boolean
 
   const grouped = new Map<string, EventCard>();
   for (const row of rows) {
-    const current = grouped.get(row.event.id) ?? { ...row.event, categoryName: categories.get(row.event.categoryId ?? 0) ?? "Panorama", topicNames: [], filterNames: [] };
+    const current = grouped.get(row.event.id) ?? { ...row.event, sourceUrl: isSpecificEventSourceUrl(row.event.sourceUrl, row.event.title) ? row.event.sourceUrl : "", categoryName: categories.get(row.event.categoryId ?? 0) ?? "Panorama", topicNames: [], filterNames: [] };
     if (row.topicName) {
       current.topicNames.push(row.topicName);
       const detectedGenres = musicGenresFromLabels([row.topicName]);
@@ -508,7 +518,7 @@ export async function saveCandidate(candidate: {
     const [saved] = existing
       ? await tx.update(events).set(existing.status === "pending"
         ? { ...event, externalKey, identityKey: existingIdentity, categoryId: category.id, status, verifiedAt: now, updatedAt: now }
-        : { identityKey: existingIdentity, categoryId: existing.categoryId ?? category.id, imageUrl: existing.imageUrl ?? candidate.imageUrl, sourceName: shouldUpgradeSource ? candidate.sourceName : existing.sourceName, sourceUrl: shouldUpgradeSource ? candidate.sourceUrl : existing.sourceUrl, startsAt: candidateHasExactTime ? candidate.startsAt : undefined, endsAt: candidateHasExactTime ? candidate.endsAt : undefined, timePrecision: candidateHasExactTime ? "exact" : existing.timePrecision, city: existing.city ?? candidate.city, region: existing.region ?? candidate.region, venue: existing.venue ?? candidate.venue, address: existing.address ?? candidate.address, latitude: candidateHasExactLocation ? candidate.latitude : existing.latitude, longitude: candidateHasExactLocation ? candidate.longitude : existing.longitude, locationPrecision: candidateHasExactLocation ? "exact" : existing.locationPrecision, updatedAt: now }).where(eq(events.id, existingId)).returning({ id: events.id, status: events.status })
+        : { identityKey: existingIdentity, categoryId: existing.categoryId ?? category.id, imageUrl: existing.imageUrl ?? candidate.imageUrl, sourceName: shouldUpgradeSource ? candidate.sourceName : existing.sourceName, sourceUrl: shouldUpgradeSource ? candidate.sourceUrl : existing.sourceUrl, startsAt: candidateHasExactTime ? candidate.startsAt : undefined, endsAt: candidateHasExactTime ? candidate.endsAt : undefined, timePrecision: candidateHasExactTime ? "exact" : existing.timePrecision, city: existing.city ?? candidate.city, region: existing.region ?? candidate.region, venue: existing.venue ?? candidate.venue, address: existing.address ?? candidate.address, latitude: candidateHasExactLocation ? candidate.latitude : existing.latitude, longitude: candidateHasExactLocation ? candidate.longitude : existing.longitude, locationPrecision: candidateHasExactLocation ? "exact" : existing.locationPrecision, catalogAuditVersion: 0, catalogAuditedAt: null, updatedAt: now }).where(eq(events.id, existingId)).returning({ id: events.id, status: events.status })
       : await tx.insert(events).values({ ...event, externalKey, identityKey, categoryId: category.id, status, eventState: "scheduled", discoveredByAi: true, verifiedAt: now }).returning({ id: events.id, status: events.status });
 
     const labels: Array<[string, string, number]> = [

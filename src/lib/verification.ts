@@ -1,8 +1,8 @@
 import OpenAI from "openai";
 import { and, desc, eq, gt, gte, lte, ne, or } from "drizzle-orm";
 import { z } from "zod";
-import { getDb } from "@/db";
-import { eventSourceObservations, eventSources, events, sources } from "@/db/schema";
+import { getDb } from "../db";
+import { eventSourceObservations, eventSources, events, sources } from "../db/schema";
 import { agentUsage, beginAgentRun, finishAgentRun } from "./agent";
 import { acceptedEventState, eventIdentityKey, eventKey, normalizedSourceUrl } from "./events";
 import { consultedWebUrls } from "./web-evidence";
@@ -52,16 +52,10 @@ function sourceDomain(value: string) {
   }
 }
 
-export async function verifyNextEvent() {
-  const db = getDb();
-  const [target] = await db.select({ source: eventSources, event: events }).from(eventSources).innerJoin(events, eq(events.id, eventSources.eventId)).where(and(
-    lte(eventSources.nextCheckAt, new Date()),
-    eq(events.status, "published"),
-    ne(events.eventState, "cancelled"),
-    or(gt(events.startsAt, new Date()), eq(events.eventState, "postponed")),
-  )).orderBy(eventSources.nextCheckAt).limit(1);
-  if (!target) return { skipped: true as const, reason: "nothing-due" };
+type VerificationTarget = { source: typeof eventSources.$inferSelect; event: typeof events.$inferSelect };
 
+async function verifyTarget(target: VerificationTarget) {
+  const db = getDb();
   const reservation = await beginAgentRun("verification", target.event.title);
   if (reservation.skipped) return reservation;
   let searches = 0;
@@ -154,4 +148,25 @@ export async function verifyNextEvent() {
     await db.update(eventSources).set({ nextCheckAt: new Date(Date.now() + 60 * 60_000) }).where(eq(eventSources.id, target.source.id));
     throw error;
   }
+}
+
+export async function verifyEvent(id: string) {
+  const [target] = await getDb().select({ source: eventSources, event: events }).from(eventSources).innerJoin(events, eq(events.id, eventSources.eventId)).where(and(
+    eq(events.id, id),
+    eq(events.status, "published"),
+    ne(events.eventState, "cancelled"),
+    eq(eventSources.status, "active"),
+  )).orderBy(desc(eventSources.isPrimary), eventSources.firstSeenAt).limit(1);
+  return target ? verifyTarget(target) : { skipped: true as const, reason: "nothing-to-verify" };
+}
+
+export async function verifyNextEvent() {
+  const [target] = await getDb().select({ source: eventSources, event: events }).from(eventSources).innerJoin(events, eq(events.id, eventSources.eventId)).where(and(
+    lte(eventSources.nextCheckAt, new Date()),
+    eq(eventSources.status, "active"),
+    eq(events.status, "published"),
+    ne(events.eventState, "cancelled"),
+    or(gt(events.startsAt, new Date()), gte(events.endsAt, new Date()), eq(events.eventState, "postponed")),
+  )).orderBy(eventSources.nextCheckAt).limit(1);
+  return target ? verifyTarget(target) : { skipped: true as const, reason: "nothing-due" };
 }

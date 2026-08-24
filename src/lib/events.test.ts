@@ -9,6 +9,8 @@ import { eventMapLocation } from "./event-map-location";
 import { musicGenresFromLabels } from "./music-genres";
 import { coordinatesAreInChile } from "./event-locations";
 import { consultedWebUrls } from "./web-evidence";
+import { sourceTextMatchesEventTitle } from "./event-source-validation";
+import { CATALOG_AUDIT_VERSION, catalogAuditIsCurrent } from "./catalog-audit";
 
 describe("eventKey", () => {
   it("normalizes title whitespace and case", () => {
@@ -34,6 +36,7 @@ describe("eventKey", () => {
     expect(isSpecificEventSourceUrl("https://tickets.example.com/")).toBe(false);
     expect(isSpecificEventSourceUrl("https://www.puntoticket.com/todos?direct=true")).toBe(false);
     expect(isSpecificEventSourceUrl("https://www.puntoticket.com/creamfields-2026")).toBe(true);
+    expect(isSpecificEventSourceUrl("https://www.ogts.cl/ogts.php?p=santiago-en-foco-ya-tiene-ganadores")).toBe(false);
     expect(isSpecificEventSourceUrl("https://www.lolytafest.cl/", "LOLYTA FEST 2026")).toBe(true);
     expect(isSpecificEventSourceUrl("https://www.lolytafest.cl/", "Otro festival")).toBe(false);
     expect(eventIdentityKey("Función", new Date("2027-03-01T20:00:00Z"), "Chillán", "Teatro"))
@@ -142,6 +145,16 @@ describe("event images", () => {
 });
 
 describe("event verification", () => {
+  it("re-runs the catalog audit when its rule version increases", () => {
+    expect(catalogAuditIsCurrent(CATALOG_AUDIT_VERSION)).toBe(true);
+    expect(catalogAuditIsCurrent(CATALOG_AUDIT_VERSION - 1)).toBe(false);
+  });
+
+  it("requires the live page content to contain the event title", () => {
+    expect(sourceTextMatchesEventTitle('<title>Santiago en Foco</title><main>Exposición fotográfica en el Palacio Consistorial</main>', "Santiago en Foco — exposición fotográfica")).toBe(true);
+    expect(sourceTextMatchesEventTitle('<title>OGTS ED DADILAPICINUM</title><img alt="María Corina Machado y Mario Desbordes">', "Santiago en Foco — exposición fotográfica")).toBe(false);
+  });
+
   it("requires an official source or an independent cancellation", () => {
     expect(acceptedEventState("cancelled", false, false)).toBeNull();
     expect(acceptedEventState("cancelled", false, true)).toBe("cancelled");

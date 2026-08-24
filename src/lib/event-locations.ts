@@ -74,6 +74,25 @@ async function findExactEventLocation(event: { id: string; title: string; venue:
   }
 }
 
+export async function auditEventLocation(id: string) {
+  const db = getDb();
+  const [event] = await db.select({ id: events.id, title: events.title, venue: events.venue, address: events.address, city: events.city, region: events.region, sourceUrl: events.sourceUrl, status: events.status, modality: events.modality, latitude: events.latitude, longitude: events.longitude, locationPrecision: events.locationPrecision }).from(events).where(eq(events.id, id)).limit(1);
+  if (!event || event.status !== "published") return { checked: false as const, updated: false };
+  if (event.modality !== "in_person") {
+    const needsUpdate = event.latitude != null || event.longitude != null || event.locationPrecision !== "online";
+    if (needsUpdate) await db.update(events).set({ latitude: null, longitude: null, locationPrecision: "online", updatedAt: new Date() }).where(eq(events.id, id));
+    return { checked: true as const, updated: needsUpdate };
+  }
+  if (event.locationPrecision === "exact" && event.latitude != null && event.longitude != null && coordinatesAreInChile(event.latitude, event.longitude)) return { checked: true as const, updated: false };
+  if (!event.venue && !event.address) {
+    const needsUpdate = event.latitude != null || event.longitude != null || event.locationPrecision !== "unavailable";
+    if (needsUpdate) await db.update(events).set({ latitude: null, longitude: null, locationPrecision: "unavailable", updatedAt: new Date() }).where(eq(events.id, id));
+    return { checked: true as const, updated: needsUpdate };
+  }
+  if (!process.env.OPENAI_API_KEY) return { checked: false as const, updated: false };
+  return findExactEventLocation(event);
+}
+
 export async function backfillExactEventLocations(limit = 6) {
   if (!process.env.OPENAI_API_KEY) return { skipped: true as const, reason: "missing-api-key" };
   const rows = await getDb().select({ id: events.id, title: events.title, venue: events.venue, address: events.address, city: events.city, region: events.region, sourceUrl: events.sourceUrl }).from(events).where(and(

@@ -7,6 +7,7 @@ import { completeQuery, coverageBootstrapPending, failQuery, markQueryRunning } 
 import { eventHasNotEnded, isSpecificEventSourceUrl, normalizedSourceUrl, popularTopics, saveCandidate } from "./events";
 import { categoryNames, categorySlugs, type CategorySlug } from "./taxonomy";
 import { consultedWebUrls } from "./web-evidence";
+import { eventSourceContainsEvent } from "./event-source-validation";
 
 const referenceSchema = z.object({ name: z.string().min(2), url: z.url() });
 
@@ -213,7 +214,15 @@ export async function runDiscoveryAgent(query?: string, queryId?: number, queryK
       const endsAt = candidate.endsAt ? new Date(candidate.endsAt) : null;
       if (!eventHasNotEnded(startsAt, endsAt) || !candidateSources.has(normalizedSourceUrl(candidate.sourceUrl, true))) continue;
       const references = candidate.references.filter((reference) => candidateSources.has(normalizedSourceUrl(reference.url, true)));
-      const directReference = [{ name: candidate.sourceName, url: candidate.sourceUrl }, ...references].find((reference) => isSpecificEventSourceUrl(reference.url, candidate.title));
+      const possibleDirectReferences = [{ name: candidate.sourceName, url: candidate.sourceUrl }, ...references]
+        .filter((reference, index, items) => isSpecificEventSourceUrl(reference.url, candidate.title)
+          && items.findIndex((item) => normalizedSourceUrl(item.url, true) === normalizedSourceUrl(reference.url, true)) === index);
+      let directReference: { name: string; url: string } | undefined;
+      for (const reference of possibleDirectReferences) {
+        try {
+          if (await eventSourceContainsEvent(reference.url, candidate.title)) { directReference = reference; break; }
+        } catch { /* An unreachable or unsafe page cannot be published as the event source. */ }
+      }
       if (!directReference) continue;
       const { coordinateSourceUrl, ...candidateData } = candidate;
       const coordinatesVerified = candidate.latitude != null && candidate.longitude != null && coordinateSourceUrl != null
@@ -221,13 +230,13 @@ export async function runDiscoveryAgent(query?: string, queryId?: number, queryK
       const saved = await saveCandidate({
         ...candidateData,
         categorySlug: expectedCategory ?? candidate.categorySlug,
-        sourceName: directReference?.name ?? candidate.sourceName,
-        sourceUrl: directReference?.url ?? candidate.sourceUrl,
+        sourceName: directReference.name,
+        sourceUrl: directReference.url,
         imageUrl: null,
         latitude: coordinatesVerified ? candidate.latitude : null,
         longitude: coordinatesVerified ? candidate.longitude : null,
         locationPrecision: coordinatesVerified ? "exact" : candidate.city ? "city" : "unknown",
-        references,
+        references: [],
         startsAt,
         endsAt,
       });

@@ -5,6 +5,8 @@ import { getDb } from "@/db";
 import { eventSourceObservations, eventSources, eventTopics, events, topics } from "@/db/schema";
 import { currentUser } from "@/lib/current-user";
 import { ensureEventImage } from "@/lib/event-images";
+import { eventSourceContainsEvent } from "@/lib/event-source-validation";
+import { isSpecificEventSourceUrl } from "@/lib/events";
 
 const actionSchema = z.object({ action: z.enum(["approve", "reject"]) });
 
@@ -16,16 +18,17 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   if (!event) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const [topicRows, sourceRows] = await Promise.all([
     db.select({ name: topics.name }).from(eventTopics).innerJoin(topics, eq(topics.id, eventTopics.topicId)).where(eq(eventTopics.eventId, id)),
-    db.select().from(eventSources).where(eq(eventSources.eventId, id)).orderBy(desc(eventSources.isPrimary), eventSources.firstSeenAt).limit(4),
+    db.select().from(eventSources).where(and(eq(eventSources.eventId, id), eq(eventSources.status, "active"))).orderBy(desc(eventSources.isPrimary), eventSources.firstSeenAt).limit(4),
   ]);
-  const observations = sourceRows.length
-    ? await db.select().from(eventSourceObservations).where(inArray(eventSourceObservations.eventSourceId, sourceRows.map((source) => source.id))).orderBy(desc(eventSourceObservations.checkedAt))
+  const publicSourceRows = sourceRows.filter((source) => isSpecificEventSourceUrl(source.url, event.title));
+  const observations = publicSourceRows.length
+    ? await db.select().from(eventSourceObservations).where(inArray(eventSourceObservations.eventSourceId, publicSourceRows.map((source) => source.id))).orderBy(desc(eventSourceObservations.checkedAt))
     : [];
-  const publicEvent = { ...event, submittedBy: undefined };
+  const publicEvent = { ...event, sourceUrl: isSpecificEventSourceUrl(event.sourceUrl, event.title) ? event.sourceUrl : "", submittedBy: undefined };
   return NextResponse.json({
     event: publicEvent,
     topicNames: topicRows.map((topic) => topic.name),
-    sources: sourceRows.map((source) => ({ ...source, observations: observations.filter((observation) => observation.eventSourceId === source.id) })),
+    sources: publicSourceRows.map((source) => ({ ...source, observations: observations.filter((observation) => observation.eventSourceId === source.id) })),
   });
 }
 
@@ -35,10 +38,21 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const parsed = actionSchema.safeParse(await request.json());
   if (!parsed.success) return NextResponse.json({ error: "Invalid action" }, { status: 400 });
   const { id } = await params;
+  if (parsed.data.action === "approve") {
+    const [event] = await getDb().select({ title: events.title, sourceUrl: events.sourceUrl }).from(events).where(eq(events.id, id)).limit(1);
+    if (!event || !isSpecificEventSourceUrl(event.sourceUrl, event.title)) return NextResponse.json({ error: "La fuente no es una página específica del evento" }, { status: 422 });
+    try {
+      if (!(await eventSourceContainsEvent(event.sourceUrl, event.title))) return NextResponse.json({ error: "La página ya no contiene el evento anunciado" }, { status: 422 });
+    } catch {
+      return NextResponse.json({ error: "No fue posible validar la página del evento" }, { status: 422 });
+    }
+  }
   const [updated] = await getDb().update(events).set({
     status: parsed.data.action === "approve" ? "published" : "rejected",
     confidence: parsed.data.action === "approve" ? 100 : 0,
     verifiedAt: new Date(),
+    catalogAuditVersion: 0,
+    catalogAuditedAt: null,
     updatedAt: new Date(),
   }).where(eq(events.id, id)).returning({ id: events.id });
   if (updated && parsed.data.action === "approve") {
