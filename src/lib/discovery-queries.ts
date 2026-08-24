@@ -147,6 +147,16 @@ export async function recoverStaleQueries() {
 export async function nextDueQuery() {
   const now = new Date();
   const activeSince = new Date(now.getTime() - 7 * 24 * 60 * 60_000);
+  const coverageRegionPriority = sql`case ${discoveryQueries.region}
+    when 'Metropolitana' then 0
+    when 'Valparaíso' then 1
+    when 'Biobío' then 2
+    when 'Coquimbo' then 3
+    when 'Maule' then 4
+    when 'La Araucanía' then 5
+    when 'Los Lagos' then 6
+    else 10
+  end`;
   const [query] = await getDb().select().from(discoveryQueries).where(and(
     lte(discoveryQueries.nextRefreshAt, now),
     ne(discoveryQueries.status, "running"),
@@ -154,7 +164,12 @@ export async function nextDueQuery() {
       eq(discoveryQueries.kind, "coverage"),
       and(eq(discoveryQueries.kind, "user"), gte(discoveryQueries.requestCount, 3), gte(discoveryQueries.lastRequestedAt, activeSince)),
     ),
-  )).orderBy(sql`case when ${discoveryQueries.kind} = 'user' then 0 else 1 end`, asc(discoveryQueries.nextRefreshAt)).limit(1);
+  )).orderBy(
+    sql`case when ${discoveryQueries.kind} = 'user' then 0 else 1 end`,
+    asc(discoveryQueries.nextRefreshAt),
+    coverageRegionPriority,
+    asc(discoveryQueries.id),
+  ).limit(1);
   return query;
 }
 
