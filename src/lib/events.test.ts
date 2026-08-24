@@ -39,6 +39,10 @@ describe("eventKey", () => {
       { ...occurrence, startsAt: new Date("2027-03-01T13:00:00Z"), venue: "Centro Cultural" },
       { ...occurrence, title: "RushCon 2026 — El Multiverso Friki Más Grande de Chile", startsAt: new Date("2027-03-01T16:00:00Z"), venue: null },
     )).toBe(true);
+    expect(sameEventOccurrence(
+      { ...occurrence, startsAt: new Date("2027-03-01T12:00:00Z"), timePrecision: "date", venue: "Espacio Vicente Valdés" },
+      { ...occurrence, startsAt: new Date("2027-03-01T16:00:00Z"), timePrecision: "exact", city: "La Florida", venue: "Espacio Vicente Valdés" },
+    )).toBe(true);
     expect(sameEventOccurrence({ ...occurrence, startsAt: new Date("2027-03-01T13:00:00Z") }, { ...occurrence, startsAt: new Date("2027-03-01T16:00:00Z") })).toBe(false);
   });
 });

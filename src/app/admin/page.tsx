@@ -7,7 +7,7 @@ import { currentUser } from "@/lib/current-user";
 
 export const dynamic = "force-dynamic";
 
-const formatDate = (date: Date | null) => date ? new Intl.DateTimeFormat("es-CL", { dateStyle: "short", timeStyle: "short" }).format(date) : "-";
+const formatDate = (date: Date | null) => date ? new Intl.DateTimeFormat("es-CL", { dateStyle: "short", timeStyle: "short", timeZone: "America/Santiago" }).format(date) : "-";
 
 export default async function AdminPage() {
   const user = await currentUser();

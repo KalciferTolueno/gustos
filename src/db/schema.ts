@@ -104,6 +104,7 @@ export const events = pgTable(
     description: text("description").notNull().default(""),
     startsAt: timestamp("starts_at", { mode: "date", withTimezone: true }).notNull(),
     endsAt: timestamp("ends_at", { mode: "date", withTimezone: true }),
+    timePrecision: text("time_precision").notNull().default("exact"),
     city: text("city"),
     region: text("region"),
     venue: text("venue"),

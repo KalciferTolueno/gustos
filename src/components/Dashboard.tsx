@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { startTransition, useDeferredValue, useState, type FormEvent } from "react";
@@ -39,8 +40,11 @@ const EventMap = dynamic(() => import("./EventMap").then((module) => module.Even
   loading: () => <div className="map-loading">Preparando el mapa...</div>,
 });
 
-const dateFormatter = new Intl.DateTimeFormat("es-CL", { day: "numeric", month: "short" });
-const fullDateFormatter = new Intl.DateTimeFormat("es-CL", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+const chileTimeZone = "America/Santiago";
+const dateFormatter = new Intl.DateTimeFormat("es-CL", { day: "numeric", month: "short", timeZone: chileTimeZone });
+const fullDateFormatter = new Intl.DateTimeFormat("es-CL", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: chileTimeZone });
+const dateOnlyFormatter = new Intl.DateTimeFormat("es-CL", { weekday: "short", day: "numeric", month: "short", timeZone: chileTimeZone });
+const verifiedDateFormatter = new Intl.DateTimeFormat("es-CL", { dateStyle: "medium", timeStyle: "short", timeZone: chileTimeZone });
 const eventStateLabels: Record<string, string> = { scheduled: "Programado", postponed: "Postergado", cancelled: "Cancelado", completed: "Finalizado" };
 type DashboardProps = {
   events: EventCard[];
@@ -178,11 +182,11 @@ export function Dashboard({ events, demo, signedIn, userName, interestTopics, in
           <form onSubmit={searchWeb} className="glass-panel mt-8 grid gap-2 rounded-2xl p-2 text-left md:grid-cols-[1.5fr_1fr_auto] md:rounded-full">
             <label className="flex items-center gap-2 px-3">
               <Search className="size-4 shrink-0 text-zinc-500" />
-              <Input value={query} onChange={(event) => { setQuery(event.target.value); setTopic("Todos"); setSubtopic("Todos"); setCity("Todo Chile"); setSearchMessage(""); setDiscoveredEventIds([]); }} placeholder="¿Qué quieres encontrar?" className="h-11 border-0 px-0 text-zinc-100 shadow-none focus-visible:ring-0" />
+              <Input aria-label="Buscar eventos" value={query} onChange={(event) => { setQuery(event.target.value); setTopic("Todos"); setSubtopic("Todos"); setCity("Todo Chile"); setSearchMessage(""); setDiscoveredEventIds([]); }} placeholder="¿Qué quieres encontrar?" className="h-11 border-0 px-0 text-zinc-100 shadow-none focus-visible:ring-0" />
             </label>
             <div className="flex items-center gap-2 border-t border-white/8 px-3 md:border-l md:border-t-0">
               <MapPin className="size-4 shrink-0 text-zinc-500" />
-              <Select value={city} onValueChange={setCity}><SelectTrigger className="h-11 border-0 px-0 text-zinc-300 shadow-none focus:ring-0"><SelectValue /></SelectTrigger><SelectContent>{cities.map((item) => <SelectItem value={item} key={item}>{item}</SelectItem>)}</SelectContent></Select>
+              <Select value={city} onValueChange={setCity}><SelectTrigger aria-label="Filtrar por ciudad" className="h-11 border-0 px-0 text-zinc-300 shadow-none focus:ring-0"><SelectValue /></SelectTrigger><SelectContent>{cities.map((item) => <SelectItem value={item} key={item}>{item}</SelectItem>)}</SelectContent></Select>
             </div>
             <Button type="submit" size="lg" disabled={searching} className="rounded-xl md:rounded-full"><Search /> {searching ? "Buscando..." : "Buscar"}</Button>
           </form>
@@ -195,7 +199,7 @@ export function Dashboard({ events, demo, signedIn, userName, interestTopics, in
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="hide-scrollbar flex gap-2 overflow-x-auto pb-1">
               {topics.map((item) => (
-                <Button key={item} onClick={() => { setTopic(item); setSubtopic("Todos"); }} variant={topic === item ? "default" : "outline"} size="sm" className="shrink-0 rounded-full">
+                <Button key={item} onClick={() => { setTopic(item); setSubtopic("Todos"); }} variant={topic === item ? "default" : "outline"} size="sm" className="min-h-11 shrink-0 rounded-full">
                   {topic === item && <Check />} {item}
                 </Button>
               ))}
@@ -203,7 +207,7 @@ export function Dashboard({ events, demo, signedIn, userName, interestTopics, in
             </div>
             <div className="flex items-center justify-between gap-3">
               <p className="text-sm text-zinc-400" aria-live="polite">{filtered.length} resultado{filtered.length === 1 ? "" : "s"}{city !== "Todo Chile" ? ` en ${city}` : ""}</p>
-              <TabsList aria-label="Vista"><TabsTrigger value="list"><ListFilter /> Lista</TabsTrigger><TabsTrigger value="map"><Map /> Mapa</TabsTrigger></TabsList>
+              <TabsList aria-label="Vista"><TabsTrigger value="list" className="min-h-11"><ListFilter /> Lista</TabsTrigger><TabsTrigger value="map" className="min-h-11"><Map /> Mapa</TabsTrigger></TabsList>
             </div>
           </div>
 
@@ -235,10 +239,11 @@ function EventTile({ event, index, onOpen }: { event: EventCard; index: number; 
   const image = event.imageUrl;
   return (
     <Card className="event-tile gap-0 overflow-hidden rounded-3xl" style={{ "--tile-hue": `${190 + (index % 5) * 28}` } as React.CSSProperties}>
-      <div className="event-visual relative h-64 overflow-hidden" style={image ? { backgroundImage: `url("${image}")` } : undefined}>
-        <Badge className="absolute left-3 top-3 bg-black/55 text-zinc-100 backdrop-blur-md">{dateFormatter.format(date)}</Badge>
-        <Badge variant="outline" className="absolute right-3 top-3 bg-black/45 text-zinc-200 backdrop-blur-md">{event.eventState === "scheduled" ? `${event.confidence}% confianza` : eventStateLabels[event.eventState]}</Badge>
-        {!image && <span className="absolute inset-0 grid place-items-center text-xs text-zinc-500">Sin imagen oficial</span>}
+      <div className="event-visual relative h-64 overflow-hidden">
+        {image && <Image src={image} alt="" fill unoptimized sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 20vw" className="z-0 object-cover" />}
+        <Badge className="absolute left-3 top-3 z-10 bg-black/55 text-zinc-100 backdrop-blur-md">{dateFormatter.format(date)}</Badge>
+        <Badge variant="outline" className="absolute right-3 top-3 z-10 bg-black/45 text-zinc-200 backdrop-blur-md">{event.eventState === "scheduled" ? `${event.confidence}% confianza` : eventStateLabels[event.eventState]}</Badge>
+        {!image && <span className="absolute inset-0 z-10 grid place-items-center text-xs text-zinc-500">Sin imagen oficial</span>}
         <div className="absolute inset-x-0 bottom-0 z-10 p-4">
           <h2 className="line-clamp-2 text-lg font-semibold leading-tight tracking-tight text-white">{event.title}</h2>
           <p className="mt-2 line-clamp-3 text-xs leading-5 text-zinc-200">{event.description}</p>
@@ -247,7 +252,7 @@ function EventTile({ event, index, onOpen }: { event: EventCard; index: number; 
       <CardContent className="p-4">
         <div className="mb-4"><Badge variant="secondary">{event.categoryName}</Badge></div>
         <div className="grid gap-2 border-t border-white/8 pt-4 text-xs text-zinc-400">
-          <span className="flex items-center gap-2"><CalendarDays className="size-4" />{fullDateFormatter.format(date)}</span>
+          <span className="flex items-center gap-2"><CalendarDays className="size-4" />{formatEventSchedule(event)}</span>
           <span className="flex items-center gap-2"><MapPin className="size-4" />{event.city ?? "Chile"}{event.venue ? ` · ${event.venue}` : ""}</span>
           {event.priceLabel && <span className="flex items-center gap-2"><Ticket className="size-4" />{event.priceLabel}</span>}
         </div>
@@ -260,7 +265,16 @@ function EventTile({ event, index, onOpen }: { event: EventCard; index: number; 
 function EventDetail({ detail, fallback, loading }: { detail: EventDetailData | null; fallback: EventCard; loading: boolean }) {
   const event = detail?.event ?? fallback;
   const imageStyle = event.imageUrl ? { backgroundImage: `linear-gradient(to top, rgba(0,0,0,.82), transparent 70%), url("${event.imageUrl}")` } : undefined;
-  return <div className="space-y-5"><div className="relative h-56 overflow-hidden rounded-xl bg-zinc-900 bg-cover bg-center" style={imageStyle}>{!event.imageUrl && <span className="absolute inset-0 grid place-items-center text-sm text-zinc-500">Sin imagen oficial</span>}<div className="absolute inset-x-0 bottom-0 p-5"><Badge variant="secondary">{eventStateLabels[event.eventState] ?? event.eventState}</Badge><DialogTitle className="mt-3 text-3xl">{event.title}</DialogTitle></div></div><p className="text-sm leading-7 text-zinc-300">{event.description}</p><div className="grid gap-3 rounded-xl border border-white/10 bg-white/4 p-4 text-sm text-zinc-300 sm:grid-cols-2"><span className="flex gap-2"><CalendarDays className="size-4 shrink-0" />{fullDateFormatter.format(new Date(event.startsAt))}{event.endsAt ? ` – ${fullDateFormatter.format(new Date(event.endsAt))}` : ""}</span><span className="flex gap-2"><MapPin className="size-4 shrink-0" />{[event.venue, event.address, event.city, event.region].filter(Boolean).join(" · ")}</span>{event.priceLabel && <span className="flex gap-2"><Ticket className="size-4 shrink-0" />{event.priceLabel}</span>}<span className="flex gap-2"><Clock3 className="size-4 shrink-0" />Verificado {event.verifiedAt ? new Intl.DateTimeFormat("es-CL", { dateStyle: "medium", timeStyle: "short" }).format(new Date(event.verifiedAt)) : "pendiente"}</span></div>{event.statusReason && <div className="rounded-xl border border-amber-400/20 bg-amber-400/8 p-4 text-sm text-amber-100">{event.statusReason}</div>}<section><h3 className="font-medium">Fuentes y verificaciones</h3>{loading && <p className="mt-2 text-sm text-zinc-400">Cargando referencias...</p>}{!loading && !detail?.sources.length && <p className="mt-2 text-sm text-zinc-400">Solo hay una referencia disponible para este evento.</p>}<div className="mt-3 grid gap-3">{detail?.sources.map((source) => <div key={source.id} className="rounded-xl border border-white/10 p-4"><div className="flex items-center justify-between gap-3"><div><b className="text-sm">{source.name}</b>{source.isPrimary && <Badge variant="secondary" className="ml-2">Principal</Badge>}</div><Button asChild variant="outline" size="sm"><a href={source.url} target="_blank" rel="noreferrer">Abrir <ExternalLink /></a></Button></div><div className="mt-3 grid gap-2">{source.observations.slice(0, 3).map((observation) => <p key={observation.id} className="border-l border-white/10 pl-3 text-xs leading-5 text-zinc-400"><b className="text-zinc-300">{eventStateLabels[observation.observedState] ?? observation.observedState}</b> · {observation.evidence} · {new Intl.DateTimeFormat("es-CL", { dateStyle: "medium" }).format(new Date(observation.checkedAt))}</p>)}</div></div>)}</div></section></div>;
+  return <div className="space-y-5"><div className="relative h-56 overflow-hidden rounded-xl bg-zinc-900 bg-cover bg-center" style={imageStyle}>{!event.imageUrl && <span className="absolute inset-0 grid place-items-center text-sm text-zinc-500">Sin imagen oficial</span>}<div className="absolute inset-x-0 bottom-0 p-5"><Badge variant="secondary">{eventStateLabels[event.eventState] ?? event.eventState}</Badge><DialogTitle className="mt-3 text-3xl">{event.title}</DialogTitle></div></div><p className="text-sm leading-7 text-zinc-300">{event.description}</p><div className="grid gap-3 rounded-xl border border-white/10 bg-white/4 p-4 text-sm text-zinc-300 sm:grid-cols-2"><span className="flex gap-2"><CalendarDays className="size-4 shrink-0" />{formatEventSchedule(event)}</span><span className="flex gap-2"><MapPin className="size-4 shrink-0" />{[event.venue, event.address, event.city, event.region].filter(Boolean).join(" · ")}</span>{event.priceLabel && <span className="flex gap-2"><Ticket className="size-4 shrink-0" />{event.priceLabel}</span>}<span className="flex gap-2"><Clock3 className="size-4 shrink-0" />Verificado {event.verifiedAt ? verifiedDateFormatter.format(new Date(event.verifiedAt)) : "pendiente"}</span></div>{event.statusReason && <div className="rounded-xl border border-amber-400/20 bg-amber-400/8 p-4 text-sm text-amber-100">{event.statusReason}</div>}<section><h3 className="font-medium">Fuentes y verificaciones</h3>{loading && <p className="mt-2 text-sm text-zinc-400">Cargando referencias...</p>}{!loading && !detail?.sources.length && <p className="mt-2 text-sm text-zinc-400">Solo hay una referencia disponible para este evento.</p>}<div className="mt-3 grid gap-3">{detail?.sources.map((source) => <div key={source.id} className="rounded-xl border border-white/10 p-4"><div className="flex items-center justify-between gap-3"><div><b className="text-sm">{source.name}</b>{source.isPrimary && <Badge variant="secondary" className="ml-2">Principal</Badge>}</div><Button asChild variant="outline" size="sm"><a href={source.url} target="_blank" rel="noreferrer">Abrir <ExternalLink /></a></Button></div><div className="mt-3 grid gap-2">{source.observations.slice(0, 3).map((observation) => <p key={observation.id} className="border-l border-white/10 pl-3 text-xs leading-5 text-zinc-400"><b className="text-zinc-300">{eventStateLabels[observation.observedState] ?? observation.observedState}</b> · {observation.evidence} · {dateOnlyFormatter.format(new Date(observation.checkedAt))}</p>)}</div></div>)}</div></section></div>;
+}
+
+function formatEventSchedule(event: Pick<EventCard, "startsAt" | "endsAt" | "timePrecision">) {
+  const startsAt = new Date(event.startsAt);
+  if (event.timePrecision !== "date") return fullDateFormatter.format(startsAt);
+  const start = dateOnlyFormatter.format(startsAt);
+  if (!event.endsAt) return `${start} · Horario por confirmar`;
+  const end = dateOnlyFormatter.format(new Date(event.endsAt));
+  return end === start ? `${start} · Horario por confirmar` : `${start} – ${end} · Horario por confirmar`;
 }
 
 function EmptyState({ query, onReset }: { query: string; onReset: () => void }) {

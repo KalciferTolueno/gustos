@@ -12,6 +12,7 @@ export type EventCard = Pick<
   | "description"
   | "startsAt"
   | "endsAt"
+  | "timePrecision"
   | "city"
   | "region"
   | "venue"
@@ -42,6 +43,7 @@ const demoEvents: EventCard[] = [
     description: "Evento ficticio para demostrar recomendaciones por genero y ciudad.",
     startsAt: new Date("2026-08-29T23:00:00-04:00"),
     endsAt: null,
+    timePrecision: "exact",
     city: "Santiago",
     region: "Metropolitana",
     venue: "Club de demostracion",
@@ -71,6 +73,7 @@ const demoEvents: EventCard[] = [
     description: "Actividad ficticia de comunidad con conversatorio e intercambio.",
     startsAt: new Date("2026-09-05T16:00:00-04:00"),
     endsAt: null,
+    timePrecision: "exact",
     city: "Santiago",
     region: "Metropolitana",
     venue: "Centro cultural de demostracion",
@@ -100,6 +103,7 @@ const demoEvents: EventCard[] = [
     description: "Torneo ficticio abierto a equipos amateur de todo Chile.",
     startsAt: new Date("2026-09-12T14:00:00-04:00"),
     endsAt: null,
+    timePrecision: "exact",
     city: "Online",
     region: "Todo Chile",
     venue: "Discord",
@@ -129,6 +133,7 @@ const demoEvents: EventCard[] = [
     description: "Evento ficticio con cosplay, musica y arte de la comunidad.",
     startsAt: new Date("2026-10-03T15:30:00-03:00"),
     endsAt: null,
+    timePrecision: "exact",
     city: "Valparaiso",
     region: "Valparaiso",
     venue: "Paseo de demostracion",
@@ -204,13 +209,21 @@ function compatibleLocation(first?: string | null, second?: string | null) {
   return !firstValue || !secondValue || firstValue === secondValue || firstValue.includes(secondValue) || secondValue.includes(firstValue);
 }
 
-export function sameEventOccurrence(first: { title: string; startsAt: Date; city?: string | null; venue?: string | null }, second: { title: string; startsAt: Date; city?: string | null; venue?: string | null }) {
+export function sameEventOccurrence(first: { title: string; startsAt: Date; timePrecision?: string; city?: string | null; venue?: string | null }, second: { title: string; startsAt: Date; timePrecision?: string; city?: string | null; venue?: string | null }) {
   const firstCity = normalizedText(first.city);
   const secondCity = normalizedText(second.city);
   const title = sameEventTitle(first.title, second.title);
   const sameTime = first.startsAt.toISOString().slice(0, 16) === second.startsAt.toISOString().slice(0, 16);
   const sameDay = first.startsAt.toISOString().slice(0, 10) === second.startsAt.toISOString().slice(0, 10);
-  return title.matches && (sameTime || (!title.exact && sameDay)) && (!firstCity || !secondCity || firstCity === secondCity) && compatibleLocation(first.venue, second.venue);
+  const dateOnly = first.timePrecision === "date" || second.timePrecision === "date";
+  const compatibleCities = !firstCity || !secondCity || firstCity === secondCity || (isSantiagoMetroCity(firstCity) && isSantiagoMetroCity(secondCity));
+  return title.matches && (sameTime || (sameDay && (!title.exact || dateOnly))) && compatibleCities && compatibleLocation(first.venue, second.venue);
+}
+
+function isSantiagoMetroCity(city: string) {
+  return new Set([
+    "santiago", "cerrillos", "cerro navia", "conchali", "el bosque", "estacion central", "huechuraba", "independencia", "la cisterna", "la florida", "la granja", "la pintana", "la reina", "las condes", "lo barnechea", "lo espejo", "lo prado", "macul", "maipu", "nunoa", "pedro aguirre cerda", "penalolen", "providencia", "pudahuel", "quinta normal", "recoleta", "renca", "san joaquin", "san miguel", "san ramon", "vitacura",
+  ]).has(city);
 }
 
 export function eventIdentityKey(title: string, startsAt: Date, city?: string | null, venue?: string | null) {
@@ -264,11 +277,14 @@ export async function consolidateDuplicateEvents(limit = 20) {
       await tx.delete(events).where(inArray(events.id, duplicateIds));
       const best = group.find((event) => event.imageUrl);
       const longestDescription = group.map((event) => event.description).sort((a, b) => b.length - a.length)[0];
+      const exactTiming = group.find((event) => event.timePrecision === "exact");
       await tx.update(events).set({
         identityKey,
         imageUrl: keeper.imageUrl ?? best?.imageUrl,
         description: longestDescription,
-        endsAt: keeper.endsAt ?? group.find((event) => event.endsAt)?.endsAt,
+        startsAt: exactTiming?.startsAt ?? keeper.startsAt,
+        endsAt: exactTiming?.endsAt ?? keeper.endsAt ?? group.find((event) => event.endsAt)?.endsAt,
+        timePrecision: exactTiming ? "exact" : "date",
         categoryId: keeper.categoryId ?? group.find((event) => event.categoryId)?.categoryId,
         city: canonicalCity,
         region: keeper.region ?? group.find((event) => event.region)?.region,
@@ -319,6 +335,7 @@ export async function saveCandidate(candidate: {
   description: string;
   startsAt: Date;
   endsAt?: Date | null;
+  timePrecision: "exact" | "date";
   city?: string | null;
   region?: string | null;
   venue?: string | null;
@@ -358,19 +375,20 @@ export async function saveCandidate(candidate: {
     const [externalMatch] = await tx.select({ id: events.id }).from(events).where(and(eq(events.externalKey, externalKey), eq(events.identityKey, identityKey))).limit(1);
     const dayStart = new Date(candidate.startsAt); dayStart.setUTCHours(0, 0, 0, 0);
     const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60_000);
-    const occurrenceRows = await tx.select({ id: events.id, title: events.title, startsAt: events.startsAt, city: events.city, venue: events.venue }).from(events).where(and(gte(events.startsAt, dayStart), lt(events.startsAt, dayEnd)));
+    const occurrenceRows = await tx.select({ id: events.id, title: events.title, startsAt: events.startsAt, timePrecision: events.timePrecision, city: events.city, venue: events.venue }).from(events).where(and(gte(events.startsAt, dayStart), lt(events.startsAt, dayEnd)));
     const compatibleOccurrences = occurrenceRows.filter((item) => sameEventOccurrence(item, candidate));
     const occurrenceCities = new Set(compatibleOccurrences.map((item) => normalizedText(item.city)).filter(Boolean));
     const occurrenceVenues = new Set(compatibleOccurrences.map((item) => normalizedText(item.venue)).filter(Boolean));
     const occurrenceMatch = (normalizedText(candidate.city) || occurrenceCities.size <= 1) && (normalizedText(candidate.venue) || occurrenceVenues.size <= 1) ? compatibleOccurrences[0] : undefined;
     const sourceMatches = sourceMatch && sameEventOccurrence(sourceMatch, candidate);
     const existingId = identityMatch?.id ?? externalMatch?.id ?? occurrenceMatch?.id ?? (sourceMatch && sourceMatches ? sourceMatch.eventId : undefined);
-    const [existing] = existingId ? await tx.select({ status: events.status, identityKey: events.identityKey, imageUrl: events.imageUrl, categoryId: events.categoryId, city: events.city, region: events.region, venue: events.venue, address: events.address }).from(events).where(eq(events.id, existingId)).limit(1) : [];
+    const [existing] = existingId ? await tx.select({ status: events.status, identityKey: events.identityKey, imageUrl: events.imageUrl, categoryId: events.categoryId, timePrecision: events.timePrecision, city: events.city, region: events.region, venue: events.venue, address: events.address }).from(events).where(eq(events.id, existingId)).limit(1) : [];
     const existingIdentity = existing?.status !== "pending" && existing?.identityKey ? existing.identityKey : !identityMatch || identityMatch.id === existingId ? identityKey : null;
+    const candidateHasExactTime = existing?.timePrecision === "date" && candidate.timePrecision === "exact";
     const [saved] = existing
       ? await tx.update(events).set(existing.status === "pending"
         ? { ...event, externalKey, identityKey: existingIdentity, categoryId: category.id, status, verifiedAt: now, updatedAt: now }
-        : { identityKey: existingIdentity, categoryId: existing.categoryId ?? category.id, imageUrl: existing.imageUrl ?? candidate.imageUrl, city: existing.city ?? candidate.city, region: existing.region ?? candidate.region, venue: existing.venue ?? candidate.venue, address: existing.address ?? candidate.address, updatedAt: now }).where(eq(events.id, existingId)).returning({ id: events.id, status: events.status })
+        : { identityKey: existingIdentity, categoryId: existing.categoryId ?? category.id, imageUrl: existing.imageUrl ?? candidate.imageUrl, startsAt: candidateHasExactTime ? candidate.startsAt : undefined, endsAt: candidateHasExactTime ? candidate.endsAt : undefined, timePrecision: candidateHasExactTime ? "exact" : existing.timePrecision, city: existing.city ?? candidate.city, region: existing.region ?? candidate.region, venue: existing.venue ?? candidate.venue, address: existing.address ?? candidate.address, updatedAt: now }).where(eq(events.id, existingId)).returning({ id: events.id, status: events.status })
       : await tx.insert(events).values({ ...event, externalKey, identityKey, categoryId: category.id, status, eventState: "scheduled", discoveredByAi: true, verifiedAt: now }).returning({ id: events.id, status: events.status });
 
     const labels: Array<[string, string, number]> = [
