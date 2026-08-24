@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { acceptedEventState, eventHasNotEnded, eventIdentityKey, eventKey, normalizedSourceUrl, sameEventOccurrence } from "./events";
+import { acceptedEventState, eventHasNotEnded, eventIdentityKey, eventKey, isSpecificEventSourceUrl, normalizedSourceUrl, sameEventOccurrence } from "./events";
 import { matchesEventSearch } from "./event-search";
 import { hashPassword, verifyPassword } from "./passwords";
 import { coverageQueryDefinitions, normalizeDiscoveryQuery, queryIsFresh } from "./discovery-queries";
@@ -26,6 +26,8 @@ describe("eventKey", () => {
     expect(normalizedSourceUrl("https://www.example.com/evento/?utm_source=test#tickets")).toBe("https://example.com/evento?utm_source=test");
     expect(normalizedSourceUrl("https://www.example.com/evento/?utm_source=test#tickets", true)).toBe("https://example.com/evento");
     expect(normalizedSourceUrl("https://example.com/evento?id=1")).not.toBe(normalizedSourceUrl("https://example.com/evento?id=2"));
+    expect(isSpecificEventSourceUrl("https://tickets.example.com/evento/123")).toBe(true);
+    expect(isSpecificEventSourceUrl("https://tickets.example.com/")).toBe(false);
     expect(eventIdentityKey("Función", new Date("2027-03-01T20:00:00Z"), "Chillán", "Teatro"))
       .not.toBe(eventIdentityKey("Función", new Date("2027-03-01T22:00:00Z"), "Chillán", "Teatro"));
     expect(eventIdentityKey("RushCon 2026", new Date("2027-03-01T20:00:00Z"), "Santiago", "Centro Cultural"))

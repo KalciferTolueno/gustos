@@ -1,7 +1,7 @@
 import { runDiscoveryAgent } from "./lib/agent";
 import { ensureScheduledCoverage, nextDueQuery, recoverStaleQueries } from "./lib/discovery-queries";
 import { backfillMissingEventImages } from "./lib/event-images";
-import { consolidateDuplicateEvents } from "./lib/events";
+import { consolidateDuplicateEvents, promoteSpecificEventSources } from "./lib/events";
 import { ensureCanonicalTaxonomy, type CategorySlug } from "./lib/taxonomy";
 import { verifyNextEvent } from "./lib/verification";
 
@@ -30,6 +30,7 @@ async function run() {
     await ensureScheduledCoverage();
     await recoverStaleQueries();
     console.log(await consolidateDuplicateEvents());
+    console.log(await promoteSpecificEventSources());
     await runNonBlockingStep("event verification", verifyNextEvent);
     let handled = false;
     for (let index = 0; index < queriesPerRun; index += 1) {

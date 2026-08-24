@@ -120,7 +120,7 @@ export async function selectMatchingEventImage(title: string, sourceUrls: string
   for (let index = 0; candidates.length < 12 && pageImages.some((images) => index < images.length); index += 1) {
     for (const images of pageImages) if (candidates.length < 12 && images[index] && !candidates.includes(images[index])) candidates.push(images[index]);
   }
-  if (candidates.length === 1 || !process.env.OPENAI_API_KEY) return candidates[0] ?? null;
+  if (!process.env.OPENAI_API_KEY) return candidates[0] ?? null;
   const reservation = await beginAgentRun("image-selection", title);
   if (reservation.skipped) return candidates[0];
   let usage = agentUsage(undefined, 0);
@@ -130,10 +130,10 @@ export async function selectMatchingEventImage(title: string, sourceUrls: string
     const response = candidates.length ? await openai.responses.create({
       model: process.env.OPENAI_MODEL ?? "gpt-5.6-luna", reasoning: { effort: "low" },
       input: [{ role: "user", content: [
-        { type: "input_text", text: `Selecciona la imagen que corresponda específicamente al evento ${JSON.stringify(title)}. Las imágenes siguientes corresponden, en el mismo orden, a estas URLs:\n${candidates.map((url, index) => `${index + 1}. ${url}`).join("\n")}\nPrioriza afiches, banners o fotografías del evento; evita logos genéricos, iconos y publicidad no relacionada. Devuelve exactamente una URL de las candidatas.` },
+        { type: "input_text", text: `Selecciona la imagen que corresponda específicamente al evento ${JSON.stringify(title)}. Las imágenes siguientes corresponden, en el mismo orden, a estas URLs:\n${candidates.map((url, index) => `${index + 1}. ${url}`).join("\n")}\nPrioriza afiches, banners o fotografías del evento; evita logos genéricos, iconos y publicidad no relacionada. Si ninguna coincide inequívocamente, devuelve imageUrl=null.` },
         ...candidates.map((image_url) => ({ type: "input_image" as const, image_url, detail: "low" as const })),
       ] }],
-      text: { format: { type: "json_schema", name: "event_image", strict: true, schema: { type: "object", additionalProperties: false, properties: { imageUrl: { type: "string", enum: candidates } }, required: ["imageUrl"] } } },
+      text: { format: { type: "json_schema", name: "event_image", strict: true, schema: { type: "object", additionalProperties: false, properties: { imageUrl: { type: ["string", "null"], enum: [null, ...candidates] } }, required: ["imageUrl"] } } },
     }) : await openai.responses.create({
       model: process.env.OPENAI_MODEL ?? "gpt-5.6-luna", reasoning: { effort: "low" },
       tools: [{ type: "web_search", search_context_size: "medium", user_location: { type: "approximate", country: "CL", timezone: "America/Santiago" } }],
@@ -145,13 +145,13 @@ export async function selectMatchingEventImage(title: string, sourceUrls: string
     });
     searches = response.output.filter((item) => item.type === "web_search_call").length;
     usage = agentUsage(response.usage, searches);
-    const selected = JSON.parse(response.output_text).imageUrl;
+    const selected = JSON.parse(response.output_text).imageUrl as string | null;
     if (selected) await publicUrl(selected);
     await finishAgentRun(reservation.runId, { status: "succeeded", searches, candidates: candidates.length, published: 0, ...usage });
-    return candidates.length ? candidates.includes(selected) ? selected : candidates[0] : selected;
+    return candidates.length ? selected && candidates.includes(selected) ? selected : null : selected;
   } catch (error) {
     await finishAgentRun(reservation.runId, { status: "failed", searches, ...usage, error: error instanceof Error ? error.message.slice(0, 2000) : "Image selection failed" });
-    return candidates[0] ?? null;
+    return null;
   }
 }
 

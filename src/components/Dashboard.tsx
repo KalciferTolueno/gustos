@@ -257,7 +257,7 @@ function EventTile({ event, index, onOpen }: { event: EventCard; index: number; 
           {event.priceLabel && <span className="flex items-center gap-2"><Ticket className="size-4" />{event.priceLabel}</span>}
         </div>
       </CardContent>
-      <CardFooter className="mt-auto justify-between gap-2 px-4 pb-4"><small className="truncate text-[11px] text-zinc-500">{event.sourceName}</small><Button variant="outline" size="sm" onClick={onOpen}>Detalles</Button></CardFooter>
+      <CardFooter className="mt-auto flex-wrap justify-between gap-2 px-4 pb-4"><small className="min-w-0 flex-1 truncate text-[11px] text-zinc-500">{event.sourceName}</small><div className="flex items-center gap-2">{event.sourceUrl && <Button asChild variant="ghost" size="sm"><a href={event.sourceUrl} target="_blank" rel="noreferrer" aria-label={`Ir a la publicación de ${event.title}`}>Ir al evento <ExternalLink /></a></Button>}<Button variant="outline" size="sm" onClick={onOpen}>Detalles</Button></div></CardFooter>
     </Card>
   );
 }
