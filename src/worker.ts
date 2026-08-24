@@ -3,6 +3,7 @@ import { ensureScheduledCoverage, nextDueQuery, recoverStaleQueries } from "./li
 import { auditEventImages, backfillMissingEventImages } from "./lib/event-images";
 import { consolidateDuplicateEvents, promoteSpecificEventSources } from "./lib/events";
 import { ensureCanonicalTaxonomy, type CategorySlug } from "./lib/taxonomy";
+import { repairGenericEventSources } from "./lib/source-repair";
 import { verifyNextEvent } from "./lib/verification";
 
 const interval = Math.max(15, Number(process.env.AGENT_INTERVAL_MINUTES ?? 15)) * 60_000;
@@ -31,6 +32,7 @@ async function run() {
     await recoverStaleQueries();
     console.log(await consolidateDuplicateEvents());
     console.log(await promoteSpecificEventSources());
+    console.log(await repairGenericEventSources(4));
     await runNonBlockingStep("event verification", verifyNextEvent);
     let handled = false;
     for (let index = 0; index < queriesPerRun; index += 1) {
