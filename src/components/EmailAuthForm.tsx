@@ -44,8 +44,8 @@ export function EmailAuthForm({ google, discord }: { google: boolean; discord: b
 
   return (
       <section className="login-panel embedded-login" aria-labelledby="auth-title">
-        <div className="auth-tabs" role="tablist" aria-label="Acceso a tu cuenta"><button type="button" role="tab" aria-selected={mode === "login"} className={mode === "login" ? "selected" : ""} onClick={() => { setMode("login"); setError(""); }}>Entrar</button><button type="button" role="tab" aria-selected={mode === "register"} className={mode === "register" ? "selected" : ""} onClick={() => { setMode("register"); setError(""); }}>Crear Cuenta</button></div>
-        <div className="auth-heading"><span>{mode === "login" ? "BIENVENIDO DE VUELTA" : "ÚNETE A DATITO"}</span><h2 id="auth-title">{mode === "login" ? "Inicia sesión" : "Crea tu cuenta"}</h2></div>
+        <div className="auth-tabs" role="tablist" aria-label="Acceso a tu cuenta"><button type="button" role="tab" aria-selected={mode === "login"} className={mode === "login" ? "selected" : ""} onClick={() => { setMode("login"); setError(""); }}>Iniciar sesión</button><button type="button" role="tab" aria-selected={mode === "register"} className={mode === "register" ? "selected" : ""} onClick={() => { setMode("register"); setError(""); }}>Crear cuenta</button></div>
+        <div className="auth-heading"><h2 id="auth-title">{mode === "login" ? "Qué bueno verte de nuevo" : "Crea tu cuenta"}</h2><p>{mode === "login" ? "Entra para ver recomendaciones hechas según tus intereses." : "Personaliza tu radar y guarda los eventos que no quieres perderte."}</p></div>
         <form action={submit} className="auth-form" aria-labelledby="auth-title">
           {mode === "register" && <label><span>Nombre</span><div><UserRound size={18} aria-hidden="true" /><input name="name" autoComplete="name" minLength={2} maxLength={80} required /></div></label>}
           <label><span>Correo electrónico</span><div><AtSign size={18} aria-hidden="true" /><input name="email" type="email" inputMode="email" autoComplete="email" spellCheck={false} required /></div></label>

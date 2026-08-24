@@ -187,29 +187,34 @@ export function Dashboard({ events, demo, signedIn, userName, interestTopics, in
     <main id="main-content" className="discovery-shell min-h-screen overflow-hidden bg-[#0b0c0e] text-zinc-100" tabIndex={-1}>
       <div className="ambient ambient-one" /><div className="ambient ambient-two" />
       <div className="relative mx-auto max-w-[1440px] px-4 pb-28 pt-4 sm:px-6 lg:px-8">
-        <header className="glass-panel sticky top-4 z-40 flex h-16 items-center justify-between rounded-2xl px-4 sm:px-6">
-          <Link href="/" className="flex items-center gap-2.5 text-lg font-medium tracking-tight text-zinc-100 no-underline">
-            <span className="grid size-9 place-items-center rounded-xl border border-white/10 bg-white/8"><Layers3 className="size-4" /></span>
-            Datito
+        <header className="site-header sticky top-4 z-40 flex min-h-16 items-center justify-between px-3 sm:px-4">
+          <Link href="/" className="site-brand" aria-label="Datito, inicio">
+            <span className="site-brand-mark"><Layers3 aria-hidden="true" /></span>
+            <span className="site-brand-copy"><strong>Datito</strong><small>Panoramas en Chile</small></span>
           </Link>
-          <nav className="hidden items-center gap-1 md:flex" aria-label="Navegación principal">
-            <Button variant="ghost" onClick={showList}><Compass /> Explorar</Button>
-            <Button variant="ghost" onClick={showMap}><Map /> Mapa</Button>
+          <nav className="site-nav hidden items-center md:flex" aria-label="Navegación principal">
+            <Button variant="ghost" className={view === "list" ? "active" : undefined} onClick={showList}><Compass /> Explorar</Button>
+            <Button variant="ghost" className={view === "map" ? "active" : undefined} onClick={showMap}><Map /> Mapa</Button>
             <Button variant="ghost" onClick={() => setPanel("interests")}><Heart /> Mis intereses</Button>
             <Button variant="ghost" onClick={() => setPanel("submit")}><Plus /> Enviar evento</Button>
           </nav>
-          <Button variant="outline" className="max-w-[115px] overflow-hidden sm:max-w-none" onClick={() => setPanel(signedIn ? "interests" : "account")}><UserRound /> {userName ?? "Ingresar"}</Button>
+          <Button className="site-account-button max-w-[118px] overflow-hidden sm:max-w-none" onClick={() => setPanel(signedIn ? "interests" : "account")}><UserRound /> <span>{userName ?? "Ingresar"}</span></Button>
         </header>
 
-        <section className="mx-auto max-w-4xl pb-12 pt-16 text-center sm:pt-24">
-          <Badge variant="outline" className="gap-2 px-3 py-1.5 text-zinc-300">
-            <i className="size-1.5 rounded-full bg-emerald-400" />{events.length} panoramas en Chile
-          </Badge>
-          <h1 className="mt-5 text-balance text-4xl font-medium tracking-[-0.045em] sm:text-6xl">Tu próximo panorama está acá</h1>
-          <p className="mx-auto mt-4 max-w-2xl text-pretty text-base leading-7 text-zinc-400 sm:text-lg">
-            {userName ? `Hola, ${userName}. Descubre eventos según lo que realmente te gusta.` : "Explora gratis como invitado. Busca artistas, comunidades, juegos, anime y eventos futuros en Chile."}
-          </p>
-          <form onSubmit={searchWeb} className="glass-panel mt-8 grid gap-2 rounded-2xl p-2 text-left md:grid-cols-[1.5fr_1fr_auto] md:rounded-full">
+        <section className="hero-stage mx-auto mt-5 max-w-6xl">
+          <div className="hero-layout">
+            <div className="hero-copy">
+              <h1>Tu próximo <span>panorama</span> está acá</h1>
+              <p>{userName ? `Hola, ${userName}. Descubre eventos según lo que realmente te gusta.` : "Explora gratis como invitado. Busca artistas, comunidades, juegos, anime y eventos futuros en Chile."}</p>
+            </div>
+            <div className="hero-radar" aria-hidden="true"><span /><i /><b /></div>
+            <div className="hero-status">
+              <span><i />Radar activo</span>
+              <strong>{events.length}</strong>
+              <small>panoramas disponibles<br />en todo Chile</small>
+            </div>
+          </div>
+          <form onSubmit={searchWeb} className="glass-panel relative z-10 mx-auto mt-8 grid max-w-4xl gap-2 rounded-2xl p-2 text-left md:grid-cols-[1.5fr_1fr_auto] md:rounded-full">
             <label className="flex items-center gap-2 px-3">
               <Search className="size-4 shrink-0 text-zinc-500" aria-hidden="true" />
               <span className="sr-only">Buscar eventos</span>
@@ -221,7 +226,7 @@ export function Dashboard({ events, demo, signedIn, userName, interestTopics, in
             </div>
             <Button type="submit" size="lg" disabled={searching} className="rounded-xl md:rounded-full"><Search data-icon="inline-start" /> {searching ? "Buscando…" : "Buscar"}</Button>
           </form>
-          {searchMessage && <p className="mt-4 text-sm text-zinc-400" role="status" aria-live="polite">{searchMessage}</p>}
+          {searchMessage && <p className="relative z-10 mt-4 text-center text-sm text-zinc-400" role="status" aria-live="polite">{searchMessage}</p>}
         </section>
 
         {demo && <Badge variant="outline" className="mx-auto mb-8 flex max-w-4xl whitespace-normal px-4 py-3 text-left leading-5 text-zinc-300"><Sparkles data-icon="inline-start" /><span>Datos de demostración. Conecta PostgreSQL y OpenAI para activar el radar real.</span></Badge>}
@@ -256,8 +261,8 @@ export function Dashboard({ events, demo, signedIn, userName, interestTopics, in
       </nav>
 
       <Dialog open={panel !== null} onOpenChange={(open) => { if (!open) setPanel(null); }}>
-        <DialogContent className={panel === "account" ? "max-w-lg" : panel === "event" ? "max-w-3xl" : undefined}>
-          {panel === "account" && <><DialogHeader><DialogTitle>Bienvenido a Datito</DialogTitle><DialogDescription>Ingresa o crea una cuenta sin salir de la aplicación.</DialogDescription></DialogHeader><EmailAuthForm google={google} discord={discord} /></>}
+        <DialogContent className={panel === "account" ? "account-dialog max-w-xl gap-0 overflow-hidden p-0" : panel === "event" ? "max-w-3xl" : undefined}>
+          {panel === "account" && <><div className="account-dialog-header"><span className="site-brand-mark"><Layers3 aria-hidden="true" /></span><div><DialogTitle>Tu radar, a tu manera</DialogTitle><DialogDescription>Guarda tus intereses y encuentra antes los panoramas que sí son para ti.</DialogDescription></div></div><EmailAuthForm google={google} discord={discord} /></>}
           {panel === "interests" && <><DialogHeader><DialogTitle>Mis intereses</DialogTitle><DialogDescription>Selecciona las señales que el radar debe priorizar para ti.</DialogDescription></DialogHeader>{signedIn ? <InterestPicker topics={interestTopics} initial={initialInterests} /> : <EmailAuthForm google={google} discord={discord} />}</>}
           {panel === "submit" && <><DialogHeader><DialogTitle>Comparte un evento</DialogTitle><DialogDescription>Incluye una fuente pública para que podamos verificarlo antes de publicar.</DialogDescription></DialogHeader>{signedIn ? <SubmitEventForm /> : <EmailAuthForm google={google} discord={discord} />}</>}
           {panel === "event" && selectedEvent && <EventDetail detail={eventDetail} fallback={selectedEvent} loading={detailLoading} />}
