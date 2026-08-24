@@ -6,6 +6,7 @@ import { coverageQueryDefinitions, normalizeDiscoveryQuery, queryIsFresh } from 
 import { extractEventImage, extractEventImages } from "./event-images";
 import { agentUsage } from "./agent";
 import { eventMapLocation } from "./event-map-location";
+import { consultedWebUrls } from "./web-evidence";
 
 describe("eventKey", () => {
   it("normalizes title whitespace and case", () => {
@@ -110,6 +111,20 @@ describe("event verification", () => {
     expect(acceptedEventState("cancelled", false, true)).toBe("cancelled");
     expect(acceptedEventState("postponed", false, true)).toBeNull();
     expect(acceptedEventState("scheduled", true, false)).toBe("scheduled");
+  });
+
+  it("recognizes searched, opened, inspected, and cited web pages", () => {
+    expect([...consultedWebUrls([
+      { type: "web_search_call", action: { type: "search", sources: [{ url: "https://example.com/search-result" }] } },
+      { type: "web_search_call", action: { type: "open_page", url: "https://example.com/event" } },
+      { type: "web_search_call", action: { type: "find_in_page", url: "https://example.com/details" } },
+      { type: "message", content: [{ annotations: [{ type: "url_citation", url: "https://example.com/citation" }] }] },
+    ])]).toEqual([
+      "https://example.com/search-result",
+      "https://example.com/event",
+      "https://example.com/details",
+      "https://example.com/citation",
+    ]);
   });
 });
 

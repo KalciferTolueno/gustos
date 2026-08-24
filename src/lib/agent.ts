@@ -6,6 +6,7 @@ import { agentRuns } from "../db/schema";
 import { completeQuery, coverageBootstrapPending, failQuery, markQueryRunning } from "./discovery-queries";
 import { eventHasNotEnded, isSpecificEventSourceUrl, normalizedSourceUrl, popularTopics, saveCandidate } from "./events";
 import { categoryNames, categorySlugs, type CategorySlug } from "./taxonomy";
+import { consultedWebUrls } from "./web-evidence";
 
 const referenceSchema = z.object({ name: z.string().min(2), url: z.url() });
 
@@ -194,12 +195,7 @@ export async function runDiscoveryAgent(query?: string, queryId?: number, queryK
       searches += response.output.filter((item) => item.type === "web_search_call").length;
       inputTokens += response.usage?.input_tokens ?? 0;
       outputTokens += response.usage?.output_tokens ?? 0;
-      const passSources = new Set<string>();
-      for (const item of response.output) {
-        if (item.type === "web_search_call" && item.action.type === "search") {
-          for (const source of item.action.sources ?? []) passSources.add(normalizedSourceUrl(source.url, true));
-        }
-      }
+      const passSources = new Set([...consultedWebUrls(response.output)].map((url) => normalizedSourceUrl(url, true)));
       candidatesToSave.push(...resultSchema.parse(JSON.parse(response.output_text)).events.map((candidate) => ({ candidate, consultedSources: passSources })));
     }
     usage = agentUsage({ input_tokens: inputTokens, output_tokens: outputTokens }, searches);

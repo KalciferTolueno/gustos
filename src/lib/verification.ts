@@ -5,6 +5,7 @@ import { getDb } from "@/db";
 import { eventSourceObservations, eventSources, events, sources } from "@/db/schema";
 import { agentUsage, beginAgentRun, finishAgentRun } from "./agent";
 import { acceptedEventState, eventIdentityKey, eventKey, normalizedSourceUrl } from "./events";
+import { consultedWebUrls } from "./web-evidence";
 
 const verificationSchema = z.object({
   state: z.enum(["scheduled", "postponed", "cancelled", "unknown"]),
@@ -89,7 +90,7 @@ export async function verifyNextEvent() {
     searches = response.output.filter((item) => item.type === "web_search_call").length;
     usage = agentUsage(response.usage, searches);
     const result = verificationSchema.parse(JSON.parse(response.output_text));
-    const consulted = new Set(response.output.flatMap((item) => item.type === "web_search_call" && item.action.type === "search" ? (item.action.sources ?? []).map((source) => normalizedSourceUrl(source.url, true)) : []));
+    const consulted = new Set([...consultedWebUrls(response.output)].map((url) => normalizedSourceUrl(url, true)));
     const sourceVerified = consulted.has(normalizedSourceUrl(result.sourceUrl, true)) && normalizedSourceUrl(result.sourceUrl, true) === normalizedSourceUrl(target.source.url, true);
     if (!sourceVerified) throw new Error("Verification source was not consulted");
     const [trustedSource] = await db.select({ id: sources.id }).from(sources).where(and(eq(sources.domain, sourceDomain(target.source.url)), eq(sources.enabled, true), gte(sources.trust, 80))).limit(1);

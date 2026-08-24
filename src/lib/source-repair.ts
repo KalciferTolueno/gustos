@@ -5,6 +5,7 @@ import { getDb } from "../db";
 import { eventSources, events } from "../db/schema";
 import { agentUsage, beginAgentRun, finishAgentRun } from "./agent";
 import { isSpecificEventSourceUrl, normalizedSourceUrl } from "./events";
+import { consultedWebUrls } from "./web-evidence";
 
 const resultSchema = z.object({ sourceName: z.string().min(2), sourceUrl: z.url() });
 const jsonSchema = {
@@ -43,7 +44,7 @@ export async function repairGenericEventSources(limit = 4) {
       searches = response.output.filter((item) => item.type === "web_search_call").length;
       usage = agentUsage(response.usage, searches);
       const result = resultSchema.parse(JSON.parse(response.output_text));
-      const consulted = new Set(response.output.flatMap((item) => item.type === "web_search_call" && item.action.type === "search" ? (item.action.sources ?? []).map((source) => normalizedSourceUrl(source.url, true)) : []));
+      const consulted = new Set([...consultedWebUrls(response.output)].map((url) => normalizedSourceUrl(url, true)));
       const sourceUrl = normalizedSourceUrl(result.sourceUrl);
       if (!isSpecificEventSourceUrl(result.sourceUrl) || !consulted.has(normalizedSourceUrl(result.sourceUrl, true))) throw new Error("Repair source was not consulted or is generic");
       await db.transaction(async (tx) => {
