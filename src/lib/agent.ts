@@ -1,10 +1,11 @@
 import OpenAI from "openai";
 import { and, eq, gte, lt, sql } from "drizzle-orm";
 import { z } from "zod";
-import { getDb } from "@/db";
-import { agentRuns } from "@/db/schema";
-import { completeQuery, failQuery, markQueryRunning, musicBootstrapPending } from "./discovery-queries";
+import { getDb } from "../db";
+import { agentRuns } from "../db/schema";
+import { completeQuery, coverageBootstrapPending, failQuery, markQueryRunning } from "./discovery-queries";
 import { eventHasNotEnded, normalizedSourceUrl, popularTopics, saveCandidate } from "./events";
+import { categoryNames, categorySlugs, type CategorySlug } from "./taxonomy";
 
 const referenceSchema = z.object({ name: z.string().min(2), url: z.url() });
 
@@ -19,7 +20,10 @@ const candidateSchema = z.object({
   address: z.union([z.string(), z.null()]),
   latitude: z.union([z.number().min(-90).max(90), z.null()]),
   longitude: z.union([z.number().min(-180).max(180), z.null()]),
-  topicNames: z.array(z.string()).min(1).max(6),
+  categorySlug: z.enum(categorySlugs),
+  topicNames: z.array(z.string()).max(8),
+  artistNames: z.array(z.string()).max(20),
+  destinationNames: z.array(z.string()).max(8),
   sourceName: z.string().min(2),
   sourceUrl: z.url(),
   imageUrl: z.union([z.url(), z.null()]),
@@ -50,7 +54,10 @@ const jsonSchema = {
           address: { type: ["string", "null"] },
           latitude: { type: ["number", "null"] },
           longitude: { type: ["number", "null"] },
-          topicNames: { type: "array", items: { type: "string" }, maxItems: 6 },
+          categorySlug: { type: "string", enum: categorySlugs },
+          topicNames: { type: "array", items: { type: "string" }, maxItems: 8 },
+          artistNames: { type: "array", items: { type: "string" }, maxItems: 20 },
+          destinationNames: { type: "array", items: { type: "string" }, maxItems: 8 },
           sourceName: { type: "string" },
           sourceUrl: { type: "string" },
           imageUrl: { type: ["string", "null"] },
@@ -62,7 +69,7 @@ const jsonSchema = {
           },
           confidence: { type: "integer", minimum: 0, maximum: 100 },
         },
-        required: ["title", "description", "startsAt", "endsAt", "city", "region", "venue", "address", "latitude", "longitude", "topicNames", "sourceName", "sourceUrl", "imageUrl", "references", "confidence"],
+        required: ["title", "description", "startsAt", "endsAt", "city", "region", "venue", "address", "latitude", "longitude", "categorySlug", "topicNames", "artistNames", "destinationNames", "sourceName", "sourceUrl", "imageUrl", "references", "confidence"],
       },
     },
   },
@@ -70,10 +77,11 @@ const jsonSchema = {
 } as const;
 
 export async function beginAgentRun(kind: string, target?: string) {
+  if (process.env.AGENT_ENABLED === "false") return { skipped: true as const, reason: "disabled" };
   if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required by the discovery agent");
   if (!process.env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is required by the discovery agent");
   const db = getDb();
-  const bootstrap = await musicBootstrapPending();
+  const bootstrap = await coverageBootstrapPending();
   const dailyLimit = Number(bootstrap ? process.env.AGENT_BOOTSTRAP_SEARCHES_PER_DAY ?? 100 : process.env.AGENT_SEARCHES_PER_DAY ?? 25);
   const monthlyLimit = Number(process.env.AGENT_SEARCHES_PER_MONTH ?? 3000);
   const startOfDay = new Date();
@@ -83,12 +91,12 @@ export async function beginAgentRun(kind: string, target?: string) {
     .select({ used: sql<number>`coalesce(sum(${agentRuns.searches}), 0)` })
     .from(agentRuns)
     .where(gte(agentRuns.startedAt, startOfDay));
-  if (Number(used) >= dailyLimit) return { skipped: true as const, reason: "daily-limit" };
+  if (dailyLimit > 0 && Number(used) >= dailyLimit) return { skipped: true as const, reason: "daily-limit" };
   const [{ monthlyUsed }] = await db
     .select({ monthlyUsed: sql<number>`coalesce(sum(${agentRuns.searches}), 0)` })
     .from(agentRuns)
     .where(gte(agentRuns.startedAt, startOfMonth));
-  if (Number(monthlyUsed) >= monthlyLimit) return { skipped: true as const, reason: "monthly-limit" };
+  if (monthlyLimit > 0 && Number(monthlyUsed) >= monthlyLimit) return { skipped: true as const, reason: "monthly-limit" };
 
   const staleBefore = new Date(Date.now() - 60 * 60 * 1000);
   await db.update(agentRuns).set({ status: "failed", error: "Recovered stale run", finishedAt: new Date() }).where(and(eq(agentRuns.status, "running"), lt(agentRuns.startedAt, staleBefore)));
@@ -107,22 +115,33 @@ export async function beginAgentRun(kind: string, target?: string) {
   return { skipped: false as const, runId: run.id, dailyLimit, monthlyLimit, used: Number(used), monthlyUsed: Number(monthlyUsed) };
 }
 
-export async function finishAgentRun(id: number, values: { status: "succeeded" | "failed"; searches: number; candidates?: number; published?: number; error?: string }) {
+export async function finishAgentRun(id: number, values: { status: "succeeded" | "failed"; searches: number; candidates?: number; published?: number; inputTokens?: number; outputTokens?: number; estimatedCostMicros?: number; error?: string }) {
   await getDb().update(agentRuns).set({ ...values, finishedAt: new Date() }).where(eq(agentRuns.id, id));
 }
 
-export async function runDiscoveryAgent(query?: string, queryId?: number, queryKind = "user") {
-  const reservation = await beginAgentRun(queryKind === "music" ? "music" : "discovery", query);
+export function agentUsage(usage: { input_tokens: number; output_tokens: number } | undefined, searches: number) {
+  const inputTokens = usage?.input_tokens ?? 0;
+  const outputTokens = usage?.output_tokens ?? 0;
+  return {
+    inputTokens,
+    outputTokens,
+    estimatedCostMicros: Math.round(inputTokens * Number(process.env.OPENAI_INPUT_USD_PER_MILLION ?? 0) + outputTokens * Number(process.env.OPENAI_OUTPUT_USD_PER_MILLION ?? 0) + searches * Number(process.env.OPENAI_WEB_SEARCH_USD ?? 0) * 1_000_000),
+  };
+}
+
+export async function runDiscoveryAgent(query?: string, queryId?: number, queryKind = "user", expectedCategory?: CategorySlug | null) {
+  const reservation = await beginAgentRun(queryKind === "coverage" ? "coverage" : "discovery", query);
   if (reservation.skipped) return reservation;
   const { runId, dailyLimit, monthlyLimit, used, monthlyUsed } = reservation;
   if (queryId) await markQueryRunning(queryId);
   let searches = 0;
+  let usage = agentUsage(undefined, 0);
   try {
     const topicNames = query ? [query] : await popularTopics();
     const maxSearches = Math.min(
-      Number(queryKind === "music" ? process.env.AGENT_SEARCHES_PER_MUSIC_QUERY ?? 2 : query ? process.env.AGENT_SEARCHES_PER_QUERY ?? 2 : process.env.AGENT_SEARCHES_PER_RUN ?? 5),
-      dailyLimit - used,
-      monthlyLimit - monthlyUsed,
+      Number(queryKind === "coverage" ? process.env.AGENT_SEARCHES_PER_COVERAGE_QUERY ?? 2 : query ? process.env.AGENT_SEARCHES_PER_QUERY ?? 2 : process.env.AGENT_SEARCHES_PER_RUN ?? 5),
+      dailyLimit > 0 ? dailyLimit - used : Number.POSITIVE_INFINITY,
+      monthlyLimit > 0 ? monthlyLimit - monthlyUsed : Number.POSITIVE_INFINITY,
     );
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     const response = await openai.responses.create({
@@ -147,14 +166,18 @@ export async function runDiscoveryAgent(query?: string, queryId?: number, queryK
         "No inventes datos. Cada evento debe tener una URL publica que confirme al menos titulo y fecha.",
         "Devuelve entre 1 y 5 referencias consultadas por evento, priorizando organizador, recinto y ticketera oficial.",
         "Incluye imageUrl solo si es el afiche, banner o fotografía real de ese evento publicada por su organizador o fuente oficial. No uses imágenes de stock, genéricas ni de otro evento; si no existe una imagen real pública usa null.",
-        "El primer topicName debe ser una categoría general como Comunidad, Fiesta, Música, Convención, Gaming, Arte o Deportes; agrega después los temas específicos.",
+        `categorySlug debe ser una de estas categorías canónicas: ${categorySlugs.map((slug) => `${slug} (${categoryNames[slug]})`).join(", ")}.`,
+        expectedCategory ? `Para esta búsqueda usa categorySlug=${expectedCategory}.` : "Elige una sola categoría principal por evento.",
+        "topicNames contiene géneros, actividades, juegos, películas o franquicias; no repitas la categoría principal.",
+        "artistNames contiene todos los artistas, bandas, DJs, elencos o invitados anunciados. destinationNames contiene destinos de tours y viajes. Usa arreglos vacíos cuando no corresponda.",
         "Usa ISO 8601 con zona horaria. Un evento confirmado por una fuente oficial puede tener confidence >= 85 aunque falte la dirección detallada.",
         "No incluyas eventos ya finalizados, noticias, productos ni resultados sin fecha concreta. Para eventos en curso incluye endsAt.",
-        queryKind === "music" ? "No incluyas eventos posteriores al 31 de diciembre de 2027." : "",
+        queryKind === "coverage" ? "Busca únicamente dentro de los próximos 12 meses." : "",
       ].join("\n"),
     });
 
     searches = response.output.filter((item) => item.type === "web_search_call").length;
+    usage = agentUsage(response.usage, searches);
     const parsed = resultSchema.parse(JSON.parse(response.output_text));
     const consultedSources = new Set(
       response.output.flatMap((item) => item.type === "web_search_call" && item.action.type === "search"
@@ -171,7 +194,7 @@ export async function runDiscoveryAgent(query?: string, queryId?: number, queryK
       const references = candidate.references.filter((reference) => consultedSources.has(normalizedSourceUrl(reference.url, true)));
       const saved = await saveCandidate({
         ...candidate,
-        topicNames: queryKind === "music" ? ["Música", ...candidate.topicNames.filter((name) => name.toLocaleLowerCase("es-CL") !== "música")].slice(0, 6) : candidate.topicNames,
+        categorySlug: expectedCategory ?? candidate.categorySlug,
         references,
         startsAt,
         endsAt,
@@ -180,12 +203,12 @@ export async function runDiscoveryAgent(query?: string, queryId?: number, queryK
       if (saved.status === "published") { eventIds.push(saved.eventId); published += 1; }
     }
 
-    await finishAgentRun(runId, { status: "succeeded", searches, candidates, published });
+    await finishAgentRun(runId, { status: "succeeded", searches, candidates, published, ...usage });
     if (queryId) await completeQuery(queryId, eventIds, queryKind);
-    return { skipped: false, searches, candidates, published, eventIds };
+    return { skipped: false as const, searches, candidates, published, eventIds };
   } catch (error) {
     const message = error instanceof Error ? error.message.slice(0, 2000) : "Unknown agent error";
-    await finishAgentRun(runId, { status: "failed", searches, error: message });
+    await finishAgentRun(runId, { status: "failed", searches, ...usage, error: message });
     if (queryId) await failQuery(queryId, error);
     throw error;
   }

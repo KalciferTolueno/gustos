@@ -2,10 +2,12 @@ import { createHash } from "node:crypto";
 import { and, asc, eq, gt, gte, or, sql } from "drizzle-orm";
 import { getDb } from "../db";
 import { eventSourceObservations, eventSources, eventTopics, events, topics, type EventRow } from "../db/schema";
+import { categoryNames, topicSlug, type CategorySlug } from "./taxonomy";
 
 export type EventCard = Pick<
   EventRow,
   | "id"
+  | "categoryId"
   | "title"
   | "description"
   | "startsAt"
@@ -29,11 +31,13 @@ export type EventCard = Pick<
   | "verifiedAt"
   | "updatedAt"
   | "modality"
-> & { topicNames: string[] };
+> & { categoryName: string; topicNames: string[] };
 
 const demoEvents: EventCard[] = [
   {
     id: "demo-techno",
+    categoryId: null,
+    categoryName: "Música",
     title: "Noche techno independiente",
     description: "Evento ficticio para demostrar recomendaciones por genero y ciudad.",
     startsAt: new Date("2026-08-29T23:00:00-04:00"),
@@ -61,6 +65,8 @@ const demoEvents: EventCard[] = [
   },
   {
     id: "demo-eva",
+    categoryId: null,
+    categoryName: "Anime",
     title: "Encuentro de fans de Evangelion",
     description: "Actividad ficticia de comunidad con conversatorio e intercambio.",
     startsAt: new Date("2026-09-05T16:00:00-04:00"),
@@ -88,6 +94,8 @@ const demoEvents: EventCard[] = [
   },
   {
     id: "demo-valorant",
+    categoryId: null,
+    categoryName: "Gaming",
     title: "Copa comunitaria de Valorant",
     description: "Torneo ficticio abierto a equipos amateur de todo Chile.",
     startsAt: new Date("2026-09-12T14:00:00-04:00"),
@@ -115,6 +123,8 @@ const demoEvents: EventCard[] = [
   },
   {
     id: "demo-miku",
+    categoryId: null,
+    categoryName: "Comunidad",
     title: "Hatsune Miku fan meetup",
     description: "Evento ficticio con cosplay, musica y arte de la comunidad.",
     startsAt: new Date("2026-10-03T15:30:00-03:00"),
@@ -175,7 +185,7 @@ export function acceptedEventState(state: "scheduled" | "postponed" | "cancelled
 }
 
 export function eventIdentityKey(title: string, startsAt: Date, venue?: string | null, city?: string | null) {
-  return createHash("md5").update(`${normalizedText(title)}|${normalizedText(venue)}|${normalizedText(city)}|${startsAt.toISOString().slice(0, 10)}`).digest("hex");
+  return createHash("md5").update(`${normalizedText(title)}|${normalizedText(venue)}|${normalizedText(city)}|${startsAt.toISOString().slice(0, 16)}`).digest("hex");
 }
 
 export async function listEvents(): Promise<{ events: EventCard[]; demo: boolean }> {
@@ -183,6 +193,8 @@ export async function listEvents(): Promise<{ events: EventCard[]; demo: boolean
 
   const db = getDb();
   const now = new Date();
+  const categoryRows = await db.select({ id: topics.id, name: topics.name }).from(topics).where(eq(topics.type, "category"));
+  const categories = new Map(categoryRows.map((category) => [category.id, category.name]));
   const rows = await db
     .select({ event: events, topicName: topics.name })
     .from(events)
@@ -193,7 +205,7 @@ export async function listEvents(): Promise<{ events: EventCard[]; demo: boolean
 
   const grouped = new Map<string, EventCard>();
   for (const row of rows) {
-    const current = grouped.get(row.event.id) ?? { ...row.event, topicNames: [] };
+    const current = grouped.get(row.event.id) ?? { ...row.event, categoryName: categories.get(row.event.categoryId ?? 0) ?? "Panorama", topicNames: [] };
     if (row.topicName) current.topicNames.push(row.topicName);
     grouped.set(row.event.id, current);
   }
@@ -211,7 +223,10 @@ export async function saveCandidate(candidate: {
   address?: string | null;
   latitude?: number | null;
   longitude?: number | null;
+  categorySlug: CategorySlug;
   topicNames: string[];
+  artistNames?: string[];
+  destinationNames?: string[];
   sourceName: string;
   sourceUrl: string;
   imageUrl?: string | null;
@@ -222,11 +237,12 @@ export async function saveCandidate(candidate: {
   const externalKey = eventKey(candidate.title, candidate.startsAt, candidate.sourceUrl, candidate.venue, candidate.city);
   const identityKey = eventIdentityKey(candidate.title, candidate.startsAt, candidate.venue, candidate.city);
   const status = candidate.confidence >= 85 ? "published" : "pending";
-  const { topicNames, references = [], ...event } = candidate;
+  const { topicNames, artistNames = [], destinationNames = [], references = [], categorySlug, ...event } = candidate;
   const now = new Date();
   const nextCheckAt = new Date(now.getTime() + (candidate.startsAt.getTime() - now.getTime() <= 30 * 24 * 60 * 60_000 ? 1 : candidate.startsAt.getTime() - now.getTime() <= 90 * 24 * 60 * 60_000 ? 3 : 7) * 24 * 60 * 60_000);
 
   return db.transaction(async (tx) => {
+    const [category] = await tx.insert(topics).values({ name: categoryNames[categorySlug], slug: categorySlug, type: "category", searchEnabled: true }).onConflictDoUpdate({ target: topics.slug, set: { name: categoryNames[categorySlug], type: "category", searchEnabled: true } }).returning({ id: topics.id });
     const primaryUrl = normalizedSourceUrl(candidate.sourceUrl);
     const [sourceMatch] = await tx.select({
       eventId: eventSources.eventId,
@@ -238,20 +254,25 @@ export async function saveCandidate(candidate: {
     }).from(eventSources).innerJoin(events, eq(events.id, eventSources.eventId)).where(and(eq(eventSources.normalizedUrl, primaryUrl), eq(eventSources.isPrimary, true))).limit(1);
     const [identityMatch] = await tx.select({ id: events.id }).from(events).where(eq(events.identityKey, identityKey)).limit(1);
     const [externalMatch] = await tx.select({ id: events.id }).from(events).where(and(eq(events.externalKey, externalKey), eq(events.identityKey, identityKey))).limit(1);
-    const sourceIdentity = sourceMatch && (sourceMatch.identityKey ?? eventIdentityKey(sourceMatch.title, sourceMatch.startsAt, sourceMatch.venue, sourceMatch.city));
+    const sourceIdentity = sourceMatch && eventIdentityKey(sourceMatch.title, sourceMatch.startsAt, sourceMatch.venue, sourceMatch.city);
     const existingId = identityMatch?.id ?? externalMatch?.id ?? (sourceMatch && sourceIdentity === identityKey ? sourceMatch.eventId : undefined);
-    const [existing] = existingId ? await tx.select({ status: events.status, identityKey: events.identityKey, imageUrl: events.imageUrl }).from(events).where(eq(events.id, existingId)).limit(1) : [];
-    const existingIdentity = existing?.identityKey ?? (!identityMatch || identityMatch.id === existingId ? identityKey : null);
+    const [existing] = existingId ? await tx.select({ status: events.status, identityKey: events.identityKey, imageUrl: events.imageUrl, categoryId: events.categoryId }).from(events).where(eq(events.id, existingId)).limit(1) : [];
+    const existingIdentity = !identityMatch || identityMatch.id === existingId ? identityKey : null;
     const [saved] = existing
       ? await tx.update(events).set(existing.status === "pending"
-        ? { ...event, externalKey, identityKey: existingIdentity, status, verifiedAt: now, updatedAt: now }
-        : { identityKey: existingIdentity, imageUrl: existing.imageUrl ?? candidate.imageUrl, updatedAt: now }).where(eq(events.id, existingId)).returning({ id: events.id, status: events.status })
-      : await tx.insert(events).values({ ...event, externalKey, identityKey, status, eventState: "scheduled", discoveredByAi: true, verifiedAt: now }).returning({ id: events.id, status: events.status });
+        ? { ...event, externalKey, identityKey: existingIdentity, categoryId: category.id, status, verifiedAt: now, updatedAt: now }
+        : { identityKey: existingIdentity, categoryId: existing.categoryId ?? category.id, imageUrl: existing.imageUrl ?? candidate.imageUrl, updatedAt: now }).where(eq(events.id, existingId)).returning({ id: events.id, status: events.status })
+      : await tx.insert(events).values({ ...event, externalKey, identityKey, categoryId: category.id, status, eventState: "scheduled", discoveredByAi: true, verifiedAt: now }).returning({ id: events.id, status: events.status });
 
-    await tx.delete(eventTopics).where(eq(eventTopics.eventId, saved.id));
-    for (const name of topicNames) {
-      const slug = normalizedText(name).replace(/\s+/g, "-");
-      const [topic] = await tx.insert(topics).values({ name, slug, type: "interest" }).onConflictDoUpdate({ target: topics.slug, set: { name } }).returning({ id: topics.id });
+    const labels: Array<[string, string, number]> = [
+      ...topicNames.map((name): [string, string, number] => [name, "topic", category.id]),
+      ...artistNames.map((name): [string, string, number] => [name, "artist", category.id]),
+      ...destinationNames.map((name): [string, string, number] => [name, "destination", category.id]),
+    ];
+    for (const [name, type, parentId] of labels) {
+      const slug = topicSlug(name);
+      if (!slug) continue;
+      const [topic] = await tx.insert(topics).values({ name, slug, type, parentId, searchEnabled: false }).onConflictDoUpdate({ target: topics.slug, set: { name } }).returning({ id: topics.id });
       await tx.insert(eventTopics).values({ eventId: saved.id, topicId: topic.id }).onConflictDoNothing();
     }
 

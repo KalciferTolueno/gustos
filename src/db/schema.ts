@@ -1,6 +1,7 @@
 import {
   boolean,
   doublePrecision,
+  foreignKey,
   index,
   integer,
   pgTable,
@@ -68,7 +69,11 @@ export const topics = pgTable(
     parentId: integer("parent_id"),
     searchEnabled: boolean("search_enabled").notNull().default(true),
   },
-  (table) => [index("topics_type_idx").on(table.type)],
+  (table) => [
+    foreignKey({ columns: [table.parentId], foreignColumns: [table.id] }).onDelete("set null"),
+    index("topics_type_idx").on(table.type),
+    index("topics_parent_idx").on(table.parentId),
+  ],
 );
 
 export const userInterests = pgTable(
@@ -94,6 +99,7 @@ export const events = pgTable(
     id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
     externalKey: text("external_key").notNull(),
     identityKey: text("identity_key"),
+    categoryId: integer("category_id").references(() => topics.id, { onDelete: "set null" }),
     title: text("title").notNull(),
     description: text("description").notNull().default(""),
     startsAt: timestamp("starts_at", { mode: "date", withTimezone: true }).notNull(),
@@ -126,6 +132,7 @@ export const events = pgTable(
     index("events_starts_at_idx").on(table.startsAt),
     index("events_city_idx").on(table.city),
     index("events_status_idx").on(table.status),
+    index("events_category_idx").on(table.categoryId),
   ],
 );
 
@@ -135,7 +142,7 @@ export const eventTopics = pgTable(
     eventId: text("event_id").notNull().references(() => events.id, { onDelete: "cascade" }),
     topicId: integer("topic_id").notNull().references(() => topics.id, { onDelete: "cascade" }),
   },
-  (table) => [primaryKey({ columns: [table.eventId, table.topicId] })],
+  (table) => [primaryKey({ columns: [table.eventId, table.topicId] }), index("event_topics_topic_idx").on(table.topicId, table.eventId)],
 );
 
 export const agentRuns = pgTable("agent_runs", {
@@ -147,6 +154,9 @@ export const agentRuns = pgTable("agent_runs", {
   error: text("error"),
   kind: text("kind").notNull().default("discovery"),
   target: text("target"),
+  inputTokens: integer("input_tokens").notNull().default(0),
+  outputTokens: integer("output_tokens").notNull().default(0),
+  estimatedCostMicros: integer("estimated_cost_micros").notNull().default(0),
   startedAt: timestamp("started_at", { mode: "date", withTimezone: true }).notNull().defaultNow(),
   finishedAt: timestamp("finished_at", { mode: "date", withTimezone: true }),
 });
@@ -158,6 +168,8 @@ export const discoveryQueries = pgTable(
     normalizedQuery: text("normalized_query").notNull().unique(),
     displayQuery: text("display_query").notNull(),
     kind: text("kind").notNull().default("user"),
+    categorySlug: text("category_slug"),
+    region: text("region"),
     requestCount: integer("request_count").notNull().default(0),
     status: text("status").notNull().default("queued"),
     lastRequestedAt: timestamp("last_requested_at", { mode: "date", withTimezone: true }),
@@ -177,6 +189,22 @@ export const discoveryQueryEvents = pgTable(
     eventId: text("event_id").notNull().references(() => events.id, { onDelete: "cascade" }),
   },
   (table) => [primaryKey({ columns: [table.queryId, table.eventId] })],
+);
+
+export const searchRequests = pgTable(
+  "search_requests",
+  {
+    id: serial("id").primaryKey(),
+    queryId: integer("query_id").references(() => discoveryQueries.id, { onDelete: "set null" }),
+    userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
+    requesterHash: text("requester_hash").notNull(),
+    cacheHit: boolean("cache_hit").notNull().default(false),
+    searches: integer("searches").notNull().default(0),
+    resultCount: integer("result_count").notNull().default(0),
+    status: text("status").notNull().default("succeeded"),
+    createdAt: timestamp("created_at", { mode: "date", withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("search_requests_created_idx").on(table.createdAt), index("search_requests_query_idx").on(table.queryId)],
 );
 
 export const eventSources = pgTable(

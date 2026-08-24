@@ -23,6 +23,11 @@ export function allowAuthAttempt(key: string, limit = 10, windowMs = 15 * 60_000
 
 export function requestIp(request: Request) {
   return request.headers.get("x-real-ip")
-    ?? request.headers.get("x-forwarded-for")?.split(",").at(-1)?.trim()
+    ?? request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
     ?? "unknown";
 }
+
+export function requesterHash(request: Request) {
+  return createHmac("sha256", process.env.AUTH_SECRET ?? "local-development-only").update(requestIp(request)).digest("hex");
+}
+import { createHmac } from "node:crypto";

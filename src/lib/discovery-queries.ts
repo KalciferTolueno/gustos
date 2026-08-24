@@ -1,22 +1,33 @@
-import { and, asc, desc, eq, gt, gte, like, lte, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, lte, ne, or, sql } from "drizzle-orm";
 import { getDb } from "../db";
 import { agentRuns, discoveryQueries, discoveryQueryEvents, events } from "../db/schema";
+import type { CategorySlug } from "./taxonomy";
 
 const regions = [
   "Arica y Parinacota", "Tarapacá", "Antofagasta", "Atacama", "Coquimbo", "Valparaíso", "Metropolitana",
   "O'Higgins", "Maule", "Ñuble", "Biobío", "La Araucanía", "Los Ríos", "Los Lagos", "Aysén", "Magallanes",
 ];
-const musicFamilies = [
-  "pop, rock e indie", "urbana, hip hop y reggaetón", "electrónica, techno y house",
-  "metal, punk y hardcore", "jazz, blues, clásica y experimental", "folclore, tropical, cumbia y latina",
-];
-const musicPeriods = [
-  { label: "desde hoy hasta el 30 de septiembre de 2026", until: "2026-10-01T03:00:00Z" },
-  { label: "del 1 de octubre al 31 de diciembre de 2026", until: "2027-01-01T03:00:00Z" },
-  { label: "del 1 de enero al 31 de marzo de 2027", until: "2027-04-01T03:00:00Z" },
-  { label: "del 1 de abril al 30 de junio de 2027", until: "2027-07-01T04:00:00Z" },
-  { label: "del 1 de julio al 30 de septiembre de 2027", until: "2027-10-01T03:00:00Z" },
-  { label: "del 1 de octubre al 31 de diciembre de 2027", until: "2028-01-01T03:00:00Z" },
+const coverageFamilies: Array<{ categorySlug: CategorySlug; terms: string }> = [
+  { categorySlug: "gaming", terms: "esports, videojuegos, TCG y juegos de mesa" },
+  { categorySlug: "anime", terms: "anime, manga y cosplay" },
+  { categorySlug: "cine", terms: "cine independiente, festivales y funciones especiales" },
+  { categorySlug: "musica", terms: "música urbana, reggaetón, trap, hip hop y K-pop" },
+  { categorySlug: "musica", terms: "cumbia, tropical, salsa, bachata y folclore" },
+  { categorySlug: "musica", terms: "electrónica, techno, house, trance y drum and bass" },
+  { categorySlug: "musica", terms: "rock, indie, alternativa, metal, punk y hardcore" },
+  { categorySlug: "musica", terms: "pop, jazz, blues, clásica, ópera y experimental" },
+  { categorySlug: "fotografia", terms: "fotografía, exposiciones, talleres, concursos y photo walks" },
+  { categorySlug: "astrofotografia", terms: "astrofotografía, observación astronómica y telescopios" },
+  { categorySlug: "viajes", terms: "tours, viajes, naturaleza, aventura, patrimonio y rutas gastronómicas" },
+  { categorySlug: "arte-cultura", terms: "arte, exposiciones, museos, galerías, artesanía y patrimonio" },
+  { categorySlug: "teatro-danza", terms: "teatro, musicales, danza, ballet y performance" },
+  { categorySlug: "comedia", terms: "stand-up comedy, humor e improvisación" },
+  { categorySlug: "literatura", terms: "ferias del libro, lanzamientos, firmas, poesía y clubes de lectura" },
+  { categorySlug: "gastronomia-ferias", terms: "ferias gastronómicas, mercados, diseño y emprendimiento" },
+  { categorySlug: "deportes-bienestar", terms: "deportes, carreras, trekking, ciclismo, yoga y bienestar" },
+  { categorySlug: "tecnologia-ciencia", terms: "tecnología, ciencia, innovación, programación y startups" },
+  { categorySlug: "familia", terms: "actividades infantiles y panoramas familiares" },
+  { categorySlug: "comunidad", terms: "encuentros sociales, fandoms, comunidades temáticas y culturas urbanas" },
 ];
 
 export function normalizeDiscoveryQuery(value: string) {
@@ -54,7 +65,8 @@ export async function markQueryRunning(id: number) {
 export async function completeQuery(id: number, eventIds: string[], kind: string) {
   const now = new Date();
   const uniqueEventIds = [...new Set(eventIds)];
-  const nextRefreshAt = new Date(now.getTime() + (kind === "music" ? 30 : 1) * 24 * 60 * 60_000);
+  const refreshDays = kind === "coverage" ? uniqueEventIds.length >= 15 ? 7 : uniqueEventIds.length ? 21 : 45 : 1;
+  const nextRefreshAt = new Date(now.getTime() + refreshDays * 24 * 60 * 60_000);
   await getDb().transaction(async (tx) => {
     await tx.delete(discoveryQueryEvents).where(eq(discoveryQueryEvents.queryId, id));
     if (uniqueEventIds.length) await tx.insert(discoveryQueryEvents).values(uniqueEventIds.map((eventId) => ({ queryId: id, eventId }))).onConflictDoNothing();
@@ -87,20 +99,16 @@ export async function failQuery(id: number, error: unknown) {
   }).where(eq(discoveryQueries.id, id));
 }
 
-export async function ensureMusicCoverage() {
-  const [{ count }] = await getDb().select({ count: sql<number>`count(*)` }).from(discoveryQueries).where(eq(discoveryQueries.kind, "music"));
-  if (Number(count) === 0) {
-    const values = regions.flatMap((region) => musicFamilies.flatMap((family) => musicPeriods.map((period) => {
-      const displayQuery = `eventos de música ${family} en la región de ${region}, Chile, ${period.label}`;
-      return { normalizedQuery: normalizeDiscoveryQuery(displayQuery), displayQuery, kind: "music" };
-    })));
-    await getDb().insert(discoveryQueries).values(values).onConflictDoNothing();
-  }
-  const expired = musicPeriods.filter((period) => new Date(period.until) <= new Date());
-  if (expired.length) await getDb().update(discoveryQueries).set({ status: "archived", nextRefreshAt: new Date("2100-01-01") }).where(and(
-    eq(discoveryQueries.kind, "music"),
-    or(...expired.map((period) => like(discoveryQueries.displayQuery, `%, ${period.label}`))),
-  ));
+export async function ensureScheduledCoverage() {
+  const values = regions.flatMap((region) => coverageFamilies.map(({ categorySlug, terms }) => {
+    const displayQuery = `${terms} en la región de ${region}, Chile, durante los próximos 12 meses`;
+    return { normalizedQuery: normalizeDiscoveryQuery(displayQuery), displayQuery, kind: "coverage", categorySlug, region };
+  }));
+  await getDb().insert(discoveryQueries).values(values).onConflictDoUpdate({
+    target: discoveryQueries.normalizedQuery,
+    set: { kind: "coverage", categorySlug: sql`excluded.category_slug`, region: sql`excluded.region` },
+  });
+  await getDb().update(discoveryQueries).set({ status: "archived", nextRefreshAt: new Date("2100-01-01") }).where(eq(discoveryQueries.kind, "music"));
 }
 
 export async function recoverStaleQueries() {
@@ -117,14 +125,14 @@ export async function nextDueQuery() {
     lte(discoveryQueries.nextRefreshAt, now),
     ne(discoveryQueries.status, "running"),
     or(
-      eq(discoveryQueries.kind, "music"),
+      eq(discoveryQueries.kind, "coverage"),
       and(eq(discoveryQueries.kind, "user"), gte(discoveryQueries.requestCount, 3), gte(discoveryQueries.lastRequestedAt, activeSince)),
     ),
   )).orderBy(sql`case when ${discoveryQueries.kind} = 'user' then 0 else 1 end`, asc(discoveryQueries.nextRefreshAt)).limit(1);
   return query;
 }
 
-export async function musicBootstrapPending() {
-  const [{ count }] = await getDb().select({ count: sql<number>`count(*)` }).from(discoveryQueries).where(and(eq(discoveryQueries.kind, "music"), ne(discoveryQueries.status, "archived"), sql`${discoveryQueries.lastRefreshedAt} is null`));
+export async function coverageBootstrapPending() {
+  const [{ count }] = await getDb().select({ count: sql<number>`count(*)` }).from(discoveryQueries).where(and(eq(discoveryQueries.kind, "coverage"), ne(discoveryQueries.status, "archived"), sql`${discoveryQueries.lastRefreshedAt} is null`));
   return Number(count) > 0;
 }

@@ -3,7 +3,7 @@ import { and, desc, eq, gt, gte, lte, ne, or } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "@/db";
 import { eventSourceObservations, eventSources, events, sources } from "@/db/schema";
-import { beginAgentRun, finishAgentRun } from "./agent";
+import { agentUsage, beginAgentRun, finishAgentRun } from "./agent";
 import { acceptedEventState, eventIdentityKey, eventKey, normalizedSourceUrl } from "./events";
 
 const verificationSchema = z.object({
@@ -63,6 +63,7 @@ export async function verifyNextEvent() {
   const reservation = await beginAgentRun("verification", target.event.title);
   if (reservation.skipped) return reservation;
   let searches = 0;
+  let usage = agentUsage(undefined, 0);
   try {
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     const response = await openai.responses.create({
@@ -86,6 +87,7 @@ export async function verifyNextEvent() {
       ].join("\n"),
     });
     searches = response.output.filter((item) => item.type === "web_search_call").length;
+    usage = agentUsage(response.usage, searches);
     const result = verificationSchema.parse(JSON.parse(response.output_text));
     const consulted = new Set(response.output.flatMap((item) => item.type === "web_search_call" && item.action.type === "search" ? (item.action.sources ?? []).map((source) => normalizedSourceUrl(source.url, true)) : []));
     const sourceVerified = consulted.has(normalizedSourceUrl(result.sourceUrl, true)) && normalizedSourceUrl(result.sourceUrl, true) === normalizedSourceUrl(target.source.url, true);
@@ -141,11 +143,11 @@ export async function verifyNextEvent() {
         await tx.update(events).set(changes).where(eq(events.id, target.event.id));
       }
     });
-    await finishAgentRun(reservation.runId, { status: "succeeded", searches, candidates: 1, published: 0 });
+    await finishAgentRun(reservation.runId, { status: "succeeded", searches, candidates: 1, published: 0, ...usage });
     return { skipped: false as const, state: result.state, eventId: target.event.id };
   } catch (error) {
     const message = error instanceof Error ? error.message.slice(0, 2000) : "Unknown verification error";
-    await finishAgentRun(reservation.runId, { status: "failed", searches, error: message });
+    await finishAgentRun(reservation.runId, { status: "failed", searches, ...usage, error: message });
     await db.update(eventSources).set({ nextCheckAt: new Date(Date.now() + 60 * 60_000) }).where(eq(eventSources.id, target.source.id));
     throw error;
   }

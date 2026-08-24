@@ -45,7 +45,7 @@ export function EmailAuthForm({ google, discord }: { google: boolean; discord: b
   return (
       <section className="login-panel embedded-login">
         <div className="auth-tabs"><button className={mode === "login" ? "selected" : ""} onClick={() => { setMode("login"); setError(""); }}>Entrar</button><button className={mode === "register" ? "selected" : ""} onClick={() => { setMode("register"); setError(""); }}>Crear cuenta</button></div>
-        <div className="auth-heading"><span>{mode === "login" ? "BIENVENIDO DE VUELTA" : "ÚNETE A GUSTOS"}</span><h2>{mode === "login" ? "Inicia sesión" : "Crea tu cuenta"}</h2></div>
+        <div className="auth-heading"><span>{mode === "login" ? "BIENVENIDO DE VUELTA" : "ÚNETE A DATITO"}</span><h2>{mode === "login" ? "Inicia sesión" : "Crea tu cuenta"}</h2></div>
         <form action={submit} className="auth-form">
           {mode === "register" && <label><span>Nombre</span><div><UserRound size={18} /><input name="name" autoComplete="name" minLength={2} maxLength={80} required /></div></label>}
           <label><span>Correo electrónico</span><div><AtSign size={18} /><input name="email" type="email" autoComplete="email" required /></div></label>

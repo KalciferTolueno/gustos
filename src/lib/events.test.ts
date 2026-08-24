@@ -3,6 +3,8 @@ import { acceptedEventState, eventHasNotEnded, eventIdentityKey, eventKey, norma
 import { matchesEventSearch } from "./event-search";
 import { hashPassword, verifyPassword } from "./passwords";
 import { normalizeDiscoveryQuery, queryIsFresh } from "./discovery-queries";
+import { extractEventImage } from "./event-images";
+import { agentUsage } from "./agent";
 
 describe("eventKey", () => {
   it("normalizes title whitespace and case", () => {
@@ -24,6 +26,8 @@ describe("eventKey", () => {
     expect(normalizedSourceUrl("https://www.example.com/evento/?utm_source=test#tickets")).toBe("https://example.com/evento?utm_source=test");
     expect(normalizedSourceUrl("https://www.example.com/evento/?utm_source=test#tickets", true)).toBe("https://example.com/evento");
     expect(normalizedSourceUrl("https://example.com/evento?id=1")).not.toBe(normalizedSourceUrl("https://example.com/evento?id=2"));
+    expect(eventIdentityKey("Función", new Date("2027-03-01T20:00:00Z"), "Teatro", "Chillán"))
+      .not.toBe(eventIdentityKey("Función", new Date("2027-03-01T22:00:00Z"), "Teatro", "Chillán"));
   });
 });
 
@@ -36,11 +40,27 @@ describe("discovery query cache", () => {
   });
 });
 
+describe("agent telemetry", () => {
+  it("estimates token and web search cost in microdollars", () => {
+    process.env.OPENAI_INPUT_USD_PER_MILLION = "2";
+    process.env.OPENAI_OUTPUT_USD_PER_MILLION = "10";
+    process.env.OPENAI_WEB_SEARCH_USD = "0.01";
+    expect(agentUsage({ input_tokens: 100, output_tokens: 10 }, 2).estimatedCostMicros).toBe(20_300);
+  });
+});
+
 describe("event timing", () => {
   it("keeps an event visible while its end date is still in the future", () => {
     const now = new Date("2026-08-23T16:00:00Z");
     expect(eventHasNotEnded(new Date("2026-08-21T16:00:00Z"), new Date("2026-08-23T23:00:00Z"), now)).toBe(true);
     expect(eventHasNotEnded(new Date("2026-08-21T16:00:00Z"), new Date("2026-08-22T23:00:00Z"), now)).toBe(false);
+  });
+});
+
+describe("event images", () => {
+  it("extracts an official social image regardless of attribute order", () => {
+    expect(extractEventImage('<meta content="/pawstral.jpg?size=large&amp;v=2" property="og:image">', "https://pawstral.cl/evento"))
+      .toBe("https://pawstral.cl/pawstral.jpg?size=large&v=2");
   });
 });
 

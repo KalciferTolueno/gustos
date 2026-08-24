@@ -14,6 +14,7 @@ export function matchesEventSearch(event: EventCard, query: string) {
     event.region,
     event.venue,
     event.address,
+    event.categoryName,
     ...event.topicNames,
   ].filter(Boolean).join(" "));
   return terms.every((term) => haystack.includes(term));

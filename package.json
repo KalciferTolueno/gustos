@@ -1,7 +1,7 @@
 {
-  "name": "gustos",
+  "name": "datito",
   "version": "1.0.0",
-  "description": "Descubrimiento de eventos en Chile segun tus gustos",
+  "description": "Descubrimiento de eventos en Chile según tus intereses",
   "scripts": {
     "test": "vitest run",
     "dev": "next dev",

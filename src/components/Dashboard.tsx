@@ -71,6 +71,7 @@ export function Dashboard({ events, demo, signedIn, userName, interestTopics, in
   const [view, setView] = useState<"list" | "map">("list");
   const [query, setQuery] = useState("");
   const [topic, setTopic] = useState("Todos");
+  const [subtopic, setSubtopic] = useState("Todos");
   const [city, setCity] = useState("Todo Chile");
   const [searching, setSearching] = useState(false);
   const [searchMessage, setSearchMessage] = useState("");
@@ -80,10 +81,12 @@ export function Dashboard({ events, demo, signedIn, userName, interestTopics, in
   const [eventDetail, setEventDetail] = useState<EventDetailData | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const deferredQuery = useDeferredValue(query.trim());
-  const topics = ["Todos", ...new Set(events.flatMap((event) => event.topicNames))];
+  const topics = ["Todos", ...new Set(events.map((event) => event.categoryName))];
+  const subtopics = ["Todos", ...new Set(events.filter((event) => topic === "Todos" || event.categoryName === topic).flatMap((event) => event.topicNames).filter((name) => name !== topic))];
   const cities = ["Todo Chile", ...new Set(events.map((event) => event.city).filter((value): value is string => Boolean(value)))];
   const filtered = events.filter((event) => (
-    (topic === "Todos" || event.topicNames.includes(topic))
+    (topic === "Todos" || event.categoryName === topic)
+    && (subtopic === "Todos" || event.topicNames.includes(subtopic))
     && (city === "Todo Chile" || event.city === city)
     && (matchesEventSearch(event, deferredQuery) || discoveredEventIds.includes(event.id))
   ));
@@ -91,6 +94,7 @@ export function Dashboard({ events, demo, signedIn, userName, interestTopics, in
   function resetFilters() {
     setQuery("");
     setTopic("Todos");
+    setSubtopic("Todos");
     setCity("Todo Chile");
     setSearchMessage("");
     setDiscoveredEventIds([]);
@@ -152,12 +156,12 @@ export function Dashboard({ events, demo, signedIn, userName, interestTopics, in
         <header className="glass-panel sticky top-4 z-40 flex h-16 items-center justify-between rounded-2xl px-4 sm:px-6">
           <Link href="/" className="flex items-center gap-2.5 text-lg font-medium tracking-tight text-zinc-100 no-underline">
             <span className="grid size-9 place-items-center rounded-xl border border-white/10 bg-white/8"><Layers3 className="size-4" /></span>
-            Gustos
+            Datito
           </Link>
           <nav className="hidden items-center gap-1 md:flex" aria-label="Navegación principal">
             <Button asChild variant="ghost"><a href="#eventos"><Compass /> Explorar</a></Button>
             <Button variant="ghost" onClick={() => { setView("map"); document.querySelector("#eventos")?.scrollIntoView(); }}><Map /> Mapa</Button>
-            <Button variant="ghost" onClick={() => setPanel("interests")}><Heart /> Mis gustos</Button>
+            <Button variant="ghost" onClick={() => setPanel("interests")}><Heart /> Mis intereses</Button>
             <Button variant="ghost" onClick={() => setPanel("submit")}><Plus /> Enviar evento</Button>
           </nav>
           <Button variant="outline" className="max-w-[115px] overflow-hidden sm:max-w-none" onClick={() => setPanel(signedIn ? "interests" : "account")}><UserRound /> {userName ?? "Ingresar"}</Button>
@@ -174,7 +178,7 @@ export function Dashboard({ events, demo, signedIn, userName, interestTopics, in
           <form onSubmit={searchWeb} className="glass-panel mt-8 grid gap-2 rounded-2xl p-2 text-left md:grid-cols-[1.5fr_1fr_auto] md:rounded-full">
             <label className="flex items-center gap-2 px-3">
               <Search className="size-4 shrink-0 text-zinc-500" />
-              <Input value={query} onChange={(event) => { setQuery(event.target.value); setTopic("Todos"); setCity("Todo Chile"); setSearchMessage(""); setDiscoveredEventIds([]); }} placeholder="¿Qué quieres encontrar?" className="h-11 border-0 px-0 text-zinc-100 shadow-none focus-visible:ring-0" />
+              <Input value={query} onChange={(event) => { setQuery(event.target.value); setTopic("Todos"); setSubtopic("Todos"); setCity("Todo Chile"); setSearchMessage(""); setDiscoveredEventIds([]); }} placeholder="¿Qué quieres encontrar?" className="h-11 border-0 px-0 text-zinc-100 shadow-none focus-visible:ring-0" />
             </label>
             <div className="flex items-center gap-2 border-t border-white/8 px-3 md:border-l md:border-t-0">
               <MapPin className="size-4 shrink-0 text-zinc-500" />
@@ -191,10 +195,11 @@ export function Dashboard({ events, demo, signedIn, userName, interestTopics, in
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="hide-scrollbar flex gap-2 overflow-x-auto pb-1">
               {topics.map((item) => (
-                <Button key={item} onClick={() => setTopic(item)} variant={topic === item ? "default" : "outline"} size="sm" className="shrink-0 rounded-full">
+                <Button key={item} onClick={() => { setTopic(item); setSubtopic("Todos"); }} variant={topic === item ? "default" : "outline"} size="sm" className="shrink-0 rounded-full">
                   {topic === item && <Check />} {item}
                 </Button>
               ))}
+              {topic !== "Todos" && subtopics.length > 1 && <Select value={subtopic} onValueChange={setSubtopic}><SelectTrigger className="w-48 shrink-0 rounded-full"><SelectValue placeholder="Subcategoría" /></SelectTrigger><SelectContent>{subtopics.map((item) => <SelectItem value={item} key={item}>{item}</SelectItem>)}</SelectContent></Select>}
             </div>
             <div className="flex items-center justify-between gap-3">
               <p className="text-sm text-zinc-400" aria-live="polite">{filtered.length} resultado{filtered.length === 1 ? "" : "s"}{city !== "Todo Chile" ? ` en ${city}` : ""}</p>
@@ -209,14 +214,14 @@ export function Dashboard({ events, demo, signedIn, userName, interestTopics, in
       <nav className="mobile-glass-nav" aria-label="Navegación móvil">
         <a href="#eventos"><Compass /><span>Explorar</span></a>
         <button onClick={() => setView("map")}><Map /><span>Mapa</span></button>
-        <button onClick={() => setPanel("interests")}><Heart /><span>Gustos</span></button>
+        <button onClick={() => setPanel("interests")}><Heart /><span>Intereses</span></button>
         <button onClick={() => setPanel("submit")}><Plus /><span>Enviar</span></button>
       </nav>
 
       <Dialog open={panel !== null} onOpenChange={(open) => { if (!open) setPanel(null); }}>
         <DialogContent className={panel === "account" ? "max-w-lg" : panel === "event" ? "max-w-3xl" : undefined}>
-          {panel === "account" && <><DialogHeader><DialogTitle>Bienvenido a Gustos</DialogTitle><DialogDescription>Ingresa o crea una cuenta sin salir de la aplicación.</DialogDescription></DialogHeader><EmailAuthForm google={google} discord={discord} /></>}
-          {panel === "interests" && <><DialogHeader><DialogTitle>Mis gustos</DialogTitle><DialogDescription>Selecciona las señales que el radar debe priorizar para ti.</DialogDescription></DialogHeader>{signedIn ? <InterestPicker topics={interestTopics} initial={initialInterests} /> : <EmailAuthForm google={google} discord={discord} />}</>}
+          {panel === "account" && <><DialogHeader><DialogTitle>Bienvenido a Datito</DialogTitle><DialogDescription>Ingresa o crea una cuenta sin salir de la aplicación.</DialogDescription></DialogHeader><EmailAuthForm google={google} discord={discord} /></>}
+          {panel === "interests" && <><DialogHeader><DialogTitle>Mis intereses</DialogTitle><DialogDescription>Selecciona las señales que el radar debe priorizar para ti.</DialogDescription></DialogHeader>{signedIn ? <InterestPicker topics={interestTopics} initial={initialInterests} /> : <EmailAuthForm google={google} discord={discord} />}</>}
           {panel === "submit" && <><DialogHeader><DialogTitle>Comparte un evento</DialogTitle><DialogDescription>Incluye una fuente pública para que podamos verificarlo antes de publicar.</DialogDescription></DialogHeader>{signedIn ? <SubmitEventForm /> : <EmailAuthForm google={google} discord={discord} />}</>}
           {panel === "event" && selectedEvent && <EventDetail detail={eventDetail} fallback={selectedEvent} loading={detailLoading} />}
         </DialogContent>
@@ -240,7 +245,7 @@ function EventTile({ event, index, onOpen }: { event: EventCard; index: number; 
         </div>
       </div>
       <CardContent className="p-4">
-        <div className="mb-4"><Badge variant="secondary">{event.topicNames[0] ?? "Panorama"}</Badge></div>
+        <div className="mb-4"><Badge variant="secondary">{event.categoryName}</Badge></div>
         <div className="grid gap-2 border-t border-white/8 pt-4 text-xs text-zinc-400">
           <span className="flex items-center gap-2"><CalendarDays className="size-4" />{fullDateFormatter.format(date)}</span>
           <span className="flex items-center gap-2"><MapPin className="size-4" />{event.city ?? "Chile"}{event.venue ? ` · ${event.venue}` : ""}</span>

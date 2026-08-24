@@ -3,7 +3,7 @@ import "leaflet/dist/leaflet.css";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Gustos | Encuentra tu proximo panorama",
+  title: "Datito | Encuentra tu próximo panorama",
   description: "Eventos en Chile elegidos segun lo que realmente te gusta.",
 };
 
