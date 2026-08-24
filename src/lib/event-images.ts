@@ -36,7 +36,7 @@ export function extractEventImages(html: string, pageUrl: string) {
     if (!value) return;
     try {
       const url = new URL(decodeHtml(value.trim()), pageUrl).toString();
-      if (!images.includes(url) && !/\.(svg|gif)(\?|$)/i.test(url)) images.push(url);
+      if (!images.includes(url) && !/\.(svg|gif|woff2?|ttf|css|js|mp4)(\?|$)/i.test(url)) images.push(url);
     } catch { /* Ignore malformed markup. */ }
   };
   const collectJsonImages = (value: unknown) => {
@@ -63,6 +63,7 @@ export function extractEventImages(html: string, pageUrl: string) {
     add(attributes.srcset?.split(",")[0]?.trim().split(/\s+/)[0]);
     add(attributes.src);
   }
+  for (const match of html.matchAll(/background(?:-image)?\s*:[^;}]*?url\(\s*(["']?)(.*?)\1\s*\)/gi)) add(match[2]);
   return images.slice(0, 8);
 }
 
@@ -119,27 +120,38 @@ export async function selectMatchingEventImage(title: string, sourceUrls: string
   for (let index = 0; candidates.length < 12 && pageImages.some((images) => index < images.length); index += 1) {
     for (const images of pageImages) if (candidates.length < 12 && images[index] && !candidates.includes(images[index])) candidates.push(images[index]);
   }
-  if (candidates.length < 2 || !process.env.OPENAI_API_KEY) return candidates[0] ?? null;
+  if (candidates.length === 1 || !process.env.OPENAI_API_KEY) return candidates[0] ?? null;
   const reservation = await beginAgentRun("image-selection", title);
   if (reservation.skipped) return candidates[0];
   let usage = agentUsage(undefined, 0);
+  let searches = 0;
   try {
-    const response = await new OpenAI({ apiKey: process.env.OPENAI_API_KEY }).responses.create({
-      model: process.env.OPENAI_MODEL ?? "gpt-5.6-luna",
-      reasoning: { effort: "low" },
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const response = candidates.length ? await openai.responses.create({
+      model: process.env.OPENAI_MODEL ?? "gpt-5.6-luna", reasoning: { effort: "low" },
       input: [{ role: "user", content: [
         { type: "input_text", text: `Selecciona la imagen que corresponda específicamente al evento ${JSON.stringify(title)}. Las imágenes siguientes corresponden, en el mismo orden, a estas URLs:\n${candidates.map((url, index) => `${index + 1}. ${url}`).join("\n")}\nPrioriza afiches, banners o fotografías del evento; evita logos genéricos, iconos y publicidad no relacionada. Devuelve exactamente una URL de las candidatas.` },
         ...candidates.map((image_url) => ({ type: "input_image" as const, image_url, detail: "low" as const })),
       ] }],
       text: { format: { type: "json_schema", name: "event_image", strict: true, schema: { type: "object", additionalProperties: false, properties: { imageUrl: { type: "string", enum: candidates } }, required: ["imageUrl"] } } },
+    }) : await openai.responses.create({
+      model: process.env.OPENAI_MODEL ?? "gpt-5.6-luna", reasoning: { effort: "low" },
+      tools: [{ type: "web_search", search_context_size: "medium", user_location: { type: "approximate", country: "CL", timezone: "America/Santiago" } }],
+      tool_choice: "required",
+      // @ts-expect-error OpenAI accepts this field, but this SDK release omits it from request types.
+      max_tool_calls: 2,
+      input: `Busca un afiche, banner o fotografía real y específica del evento ${JSON.stringify(title)}. Revisa primero estas páginas: ${sourceUrls.join(", ")}. Devuelve la URL pública directa de una imagen que haga match inequívoco con el nombre del evento; nunca uses stock, logos genéricos ni imágenes de otro evento.`,
+      text: { format: { type: "json_schema", name: "event_image_search", strict: true, schema: { type: "object", additionalProperties: false, properties: { imageUrl: { type: ["string", "null"] } }, required: ["imageUrl"] } } },
     });
-    usage = agentUsage(response.usage, 0);
+    searches = response.output.filter((item) => item.type === "web_search_call").length;
+    usage = agentUsage(response.usage, searches);
     const selected = JSON.parse(response.output_text).imageUrl;
-    await finishAgentRun(reservation.runId, { status: "succeeded", searches: 0, candidates: candidates.length, published: 0, ...usage });
-    return candidates.includes(selected) ? selected : candidates[0];
+    if (selected) await publicUrl(selected);
+    await finishAgentRun(reservation.runId, { status: "succeeded", searches, candidates: candidates.length, published: 0, ...usage });
+    return candidates.length ? candidates.includes(selected) ? selected : candidates[0] : selected;
   } catch (error) {
-    await finishAgentRun(reservation.runId, { status: "failed", searches: 0, ...usage, error: error instanceof Error ? error.message.slice(0, 2000) : "Image selection failed" });
-    return candidates[0];
+    await finishAgentRun(reservation.runId, { status: "failed", searches, ...usage, error: error instanceof Error ? error.message.slice(0, 2000) : "Image selection failed" });
+    return candidates[0] ?? null;
   }
 }
 

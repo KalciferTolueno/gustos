@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, asc, desc, eq, gt, gte, inArray, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, lt, or, sql } from "drizzle-orm";
 import { getDb } from "../db";
 import { discoveryQueryEvents, eventSourceObservations, eventSources, eventTopics, events, topics, type EventRow } from "../db/schema";
 import { categoryNames, topicSlug, type CategorySlug } from "./taxonomy";
@@ -188,6 +188,16 @@ export function eventOccurrenceKey(title: string, startsAt: Date) {
   return `${normalizedText(title)}|${startsAt.toISOString().slice(0, 16)}`;
 }
 
+export function sameEventTitle(first: string, second: string) {
+  const firstTitle = normalizedText(first);
+  const secondTitle = normalizedText(second);
+  if (firstTitle === secondTitle) return { matches: true, exact: true };
+  const base = (title: string) => normalizedText(title.split(/\s+(?:—|–|-)\s+|[:|]/, 1)[0]);
+  const firstBase = base(first);
+  const secondBase = base(second);
+  return { matches: firstBase.length >= 5 && firstBase === secondBase, exact: false };
+}
+
 function compatibleLocation(first?: string | null, second?: string | null) {
   const firstValue = normalizedText(first);
   const secondValue = normalizedText(second);
@@ -197,7 +207,10 @@ function compatibleLocation(first?: string | null, second?: string | null) {
 export function sameEventOccurrence(first: { title: string; startsAt: Date; city?: string | null; venue?: string | null }, second: { title: string; startsAt: Date; city?: string | null; venue?: string | null }) {
   const firstCity = normalizedText(first.city);
   const secondCity = normalizedText(second.city);
-  return eventOccurrenceKey(first.title, first.startsAt) === eventOccurrenceKey(second.title, second.startsAt) && (!firstCity || !secondCity || firstCity === secondCity) && compatibleLocation(first.venue, second.venue);
+  const title = sameEventTitle(first.title, second.title);
+  const sameTime = first.startsAt.toISOString().slice(0, 16) === second.startsAt.toISOString().slice(0, 16);
+  const sameDay = first.startsAt.toISOString().slice(0, 10) === second.startsAt.toISOString().slice(0, 10);
+  return title.matches && (sameTime || (!title.exact && sameDay)) && (!firstCity || !secondCity || firstCity === secondCity) && compatibleLocation(first.venue, second.venue);
 }
 
 export function eventIdentityKey(title: string, startsAt: Date, city?: string | null, venue?: string | null) {
@@ -209,12 +222,12 @@ export async function consolidateDuplicateEvents(limit = 20) {
   const rows = await db.select().from(events).orderBy(asc(events.createdAt));
   const occurrenceGroups = new Map<string, typeof rows>();
   for (const event of rows) {
-    const key = eventOccurrenceKey(event.title, event.startsAt);
+    const key = event.startsAt.toISOString().slice(0, 10);
     occurrenceGroups.set(key, [...(occurrenceGroups.get(key) ?? []), event]);
   }
-  const groups = [...occurrenceGroups.values()].flatMap((eventsAtSameMinute) => {
+  const groups = [...occurrenceGroups.values()].flatMap((eventsOnSameDay) => {
     const clusters: Array<typeof rows> = [];
-    const specificFirst = eventsAtSameMinute.sort((a, b) => Number(Boolean(b.city)) + Number(Boolean(b.venue)) - Number(Boolean(a.city)) - Number(Boolean(a.venue)));
+    const specificFirst = eventsOnSameDay.sort((a, b) => Number(Boolean(b.city)) + Number(Boolean(b.venue)) - Number(Boolean(a.city)) - Number(Boolean(a.venue)));
     for (const event of specificFirst) {
       const matches = clusters.filter((cluster) => sameEventOccurrence(cluster[0], event));
       if (matches.length === 1) matches[0].push(event);
@@ -343,10 +356,13 @@ export async function saveCandidate(candidate: {
     }).from(eventSources).innerJoin(events, eq(events.id, eventSources.eventId)).where(eq(eventSources.normalizedUrl, primaryUrl)).limit(1);
     const [identityMatch] = await tx.select({ id: events.id }).from(events).where(eq(events.identityKey, identityKey)).limit(1);
     const [externalMatch] = await tx.select({ id: events.id }).from(events).where(and(eq(events.externalKey, externalKey), eq(events.identityKey, identityKey))).limit(1);
-    const occurrenceRows = await tx.select({ id: events.id, title: events.title, startsAt: events.startsAt, city: events.city, venue: events.venue }).from(events).where(eq(events.startsAt, candidate.startsAt));
+    const dayStart = new Date(candidate.startsAt); dayStart.setUTCHours(0, 0, 0, 0);
+    const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60_000);
+    const occurrenceRows = await tx.select({ id: events.id, title: events.title, startsAt: events.startsAt, city: events.city, venue: events.venue }).from(events).where(and(gte(events.startsAt, dayStart), lt(events.startsAt, dayEnd)));
     const compatibleOccurrences = occurrenceRows.filter((item) => sameEventOccurrence(item, candidate));
     const occurrenceCities = new Set(compatibleOccurrences.map((item) => normalizedText(item.city)).filter(Boolean));
-    const occurrenceMatch = normalizedText(candidate.city) || occurrenceCities.size <= 1 ? compatibleOccurrences[0] : undefined;
+    const occurrenceVenues = new Set(compatibleOccurrences.map((item) => normalizedText(item.venue)).filter(Boolean));
+    const occurrenceMatch = (normalizedText(candidate.city) || occurrenceCities.size <= 1) && (normalizedText(candidate.venue) || occurrenceVenues.size <= 1) ? compatibleOccurrences[0] : undefined;
     const sourceMatches = sourceMatch && sameEventOccurrence(sourceMatch, candidate);
     const existingId = identityMatch?.id ?? externalMatch?.id ?? occurrenceMatch?.id ?? (sourceMatch && sourceMatches ? sourceMatch.eventId : undefined);
     const [existing] = existingId ? await tx.select({ status: events.status, identityKey: events.identityKey, imageUrl: events.imageUrl, categoryId: events.categoryId, city: events.city, region: events.region, venue: events.venue, address: events.address }).from(events).where(eq(events.id, existingId)).limit(1) : [];

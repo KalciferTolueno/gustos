@@ -2,6 +2,8 @@
 
 Descubrimiento de eventos en Chile según intereses personales. Next.js muestra la agenda y el mapa; un worker de OpenAI busca eventos verificables y PostgreSQL conserva candidatos, fuentes y moderación.
 
+Para arquitectura, flujos, modelo de datos, invariantes y traspaso a otra IA, consulta [`AI_CONTEXT.md`](AI_CONTEXT.md).
+
 ## Desarrollo
 
 Requiere Node.js 22+ y PostgreSQL.
@@ -16,9 +18,9 @@ npm run dev
 
 Sin `DATABASE_URL`, la interfaz funciona con eventos ficticios claramente identificados. El agente nunca funciona sin PostgreSQL y `OPENAI_API_KEY`.
 
-La búsqueda de portada consulta primero PostgreSQL. Cada término, incluso cuando no obtiene resultados, se guarda durante 24 horas para no repetir búsquedas web. Los términos solicitados al menos tres veces y activos durante la última semana se actualizan diariamente. Las consultas invitadas sin caché están limitadas por IP para controlar abuso.
+La búsqueda de portada consulta primero PostgreSQL. Los resultados se guardan durante 24 horas; una búsqueda vacía se reintenta después de 2 minutos. Los términos solicitados al menos tres veces y activos durante la última semana se actualizan diariamente. Las consultas invitadas sin caché están limitadas por IP para controlar abuso.
 
-El worker mantiene una matriz de cobertura musical de las 16 regiones, seis familias de géneros y seis periodos hasta el 31 de diciembre de 2027. Durante la carga inicial puede usar hasta `AGENT_BOOTSTRAP_SEARCHES_PER_DAY`; después vuelve a `AGENT_SEARCHES_PER_DAY`. Las fuentes y observaciones se conservan por evento. Los eventos próximos se verifican cada 1, 3 o 7 días según su cercanía; una cancelación requiere un dominio oficial confiable o dos dominios concordantes. La migración registra las principales ticketeras chilenas en `sources`; se pueden agregar organizadores con `trust >= 80`.
+El worker mantiene una matriz de 20 familias temáticas en las 16 regiones y una ventana móvil de 12 meses. El refresco se adapta a la cantidad de resultados (7, 21 o 45 días). También consolida duplicados, conserva sus fuentes, verifica eventos próximos y completa imágenes oficiales mediante datos estructurados, HTML y selección de IA. Durante la carga inicial puede usar hasta `AGENT_BOOTSTRAP_SEARCHES_PER_DAY`; después vuelve a `AGENT_SEARCHES_PER_DAY`.
 
 ## EasyPanel
 
@@ -64,6 +66,8 @@ https://tu-dominio.cl/api/auth/callback/discord
 ```
 
 El acceso por correo y contraseña funciona sin variables adicionales desde el panel `Ingresar` de la portada. Auth.js inicia una sesión JWT. Las contraseñas se almacenan con `scrypt` y sal aleatoria, nunca en texto plano. El correo de credenciales se trata como identificador no verificado y se mantiene separado del correo confirmado por Google o Discord. La recuperación de contraseña no está incluida porque requiere configurar un proveedor de correo.
+
+Si `ADMIN_PASSWORD` está configurada con al menos 12 caracteres, el seed aprovisiona `admin@datito.local`. El panel se encuentra en `/admin`.
 
 Para convertir una cuenta en administradora:
 

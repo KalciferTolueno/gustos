@@ -35,6 +35,11 @@ describe("eventKey", () => {
     const occurrence = { title: "RushCon 2026", startsAt: new Date("2027-03-01T20:00:00Z"), city: "Santiago" };
     expect(sameEventOccurrence({ ...occurrence, venue: "Centro Cultural" }, { ...occurrence, venue: "Centro Cultural de Santiago" })).toBe(true);
     expect(sameEventOccurrence({ ...occurrence, venue: "Cine A" }, { ...occurrence, venue: "Cine B" })).toBe(false);
+    expect(sameEventOccurrence(
+      { ...occurrence, startsAt: new Date("2027-03-01T13:00:00Z"), venue: "Centro Cultural" },
+      { ...occurrence, title: "RushCon 2026 — El Multiverso Friki Más Grande de Chile", startsAt: new Date("2027-03-01T16:00:00Z"), venue: null },
+    )).toBe(true);
+    expect(sameEventOccurrence({ ...occurrence, startsAt: new Date("2027-03-01T13:00:00Z") }, { ...occurrence, startsAt: new Date("2027-03-01T16:00:00Z") })).toBe(false);
   });
 });
 
@@ -71,11 +76,12 @@ describe("event images", () => {
   });
 
   it("collects structured, social, and page images for AI selection", () => {
-    const html = '<script type="application/ld+json">{"@type":"Event","image":"/poster.jpg"}</script><meta property="og:image" content="/social.webp"><img data-src="/gallery.png">';
+    const html = '<script type="application/ld+json">{"@type":"Event","image":"/poster.jpg"}</script><meta property="og:image" content="/social.webp"><img data-src="/gallery.png"><div style="background-image:url(\'/background.jpg\')"></div>';
     expect(extractEventImages(html, "https://example.com/evento")).toEqual([
       "https://example.com/poster.jpg",
       "https://example.com/social.webp",
       "https://example.com/gallery.png",
+      "https://example.com/background.jpg",
     ]);
   });
 });
