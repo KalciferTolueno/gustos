@@ -8,6 +8,8 @@ import { startTransition, useDeferredValue, useState, type FormEvent } from "rea
 import {
   CalendarDays,
   Check,
+  ChevronLeft,
+  ChevronRight,
   Compass,
   ExternalLink,
   Clock3,
@@ -47,6 +49,7 @@ const fullDateFormatter = new Intl.DateTimeFormat("es-CL", { weekday: "short", d
 const dateOnlyFormatter = new Intl.DateTimeFormat("es-CL", { weekday: "short", day: "numeric", month: "short", timeZone: chileTimeZone });
 const verifiedDateFormatter = new Intl.DateTimeFormat("es-CL", { dateStyle: "medium", timeStyle: "short", timeZone: chileTimeZone });
 const eventStateLabels: Record<string, string> = { scheduled: "Programado", postponed: "Postergado", cancelled: "Cancelado", completed: "Finalizado" };
+const pageSizes = [25, 50, 100] as const;
 type DashboardProps = {
   events: EventCard[];
   demo: boolean;
@@ -85,6 +88,8 @@ export function Dashboard({ events, demo, signedIn, userName, interestTopics, in
   const [selectedEvent, setSelectedEvent] = useState<EventCard | null>(null);
   const [eventDetail, setEventDetail] = useState<EventDetailData | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<(typeof pageSizes)[number]>(25);
   const deferredQuery = useDeferredValue(query.trim());
   const topics = ["Todos", ...new Set(events.map((event) => event.categoryName))];
   const subtopics = ["Todos", ...new Set(events.filter((event) => topic === "Todos" || event.categoryName === topic).flatMap((event) => event.filterNames).filter((name) => name !== topic))];
@@ -95,6 +100,10 @@ export function Dashboard({ events, demo, signedIn, userName, interestTopics, in
     && (city === "Todo Chile" || event.city === city)
     && (matchesEventSearch(event, deferredQuery) || discoveredEventIds.includes(event.id))
   ));
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const pageStart = (currentPage - 1) * pageSize;
+  const visibleEvents = filtered.slice(pageStart, pageStart + pageSize);
 
   function resetFilters() {
     setQuery("");
@@ -103,6 +112,7 @@ export function Dashboard({ events, demo, signedIn, userName, interestTopics, in
     setCity("Todo Chile");
     setSearchMessage("");
     setDiscoveredEventIds([]);
+    setPage(1);
   }
 
   function scrollToEvents() {
@@ -116,6 +126,11 @@ export function Dashboard({ events, demo, signedIn, userName, interestTopics, in
 
   function showMap() {
     setView("map");
+    scrollToEvents();
+  }
+
+  function changePage(nextPage: number) {
+    setPage(Math.max(1, Math.min(totalPages, nextPage)));
     scrollToEvents();
   }
 
@@ -198,11 +213,11 @@ export function Dashboard({ events, demo, signedIn, userName, interestTopics, in
             <label className="flex items-center gap-2 px-3">
               <Search className="size-4 shrink-0 text-zinc-500" aria-hidden="true" />
               <span className="sr-only">Buscar eventos</span>
-              <Input value={query} onChange={(event) => { setQuery(event.target.value); setTopic("Todos"); setSubtopic("Todos"); setCity("Todo Chile"); setSearchMessage(""); setDiscoveredEventIds([]); }} placeholder="¿Qué quieres encontrar?" className="h-11 border-0 px-0 text-zinc-100 shadow-none" />
+              <Input value={query} onChange={(event) => { setQuery(event.target.value); setTopic("Todos"); setSubtopic("Todos"); setCity("Todo Chile"); setSearchMessage(""); setDiscoveredEventIds([]); setPage(1); }} placeholder="¿Qué quieres encontrar?" className="h-11 border-0 px-0 text-zinc-100 shadow-none" />
             </label>
             <div className="flex items-center gap-2 border-t border-white/8 px-3 md:border-l md:border-t-0">
               <MapPin className="size-4 shrink-0 text-zinc-500" aria-hidden="true" />
-              <Select value={city} onValueChange={setCity}><SelectTrigger aria-label="Filtrar por ciudad" className="h-11 border-0 px-0 text-zinc-300 shadow-none"><SelectValue /></SelectTrigger><SelectContent>{cities.map((item) => <SelectItem value={item} key={item}>{item}</SelectItem>)}</SelectContent></Select>
+              <Select value={city} onValueChange={(value) => { setCity(value); setPage(1); }}><SelectTrigger aria-label="Filtrar por ciudad" className="h-11 border-0 px-0 text-zinc-300 shadow-none"><SelectValue /></SelectTrigger><SelectContent>{cities.map((item) => <SelectItem value={item} key={item}>{item}</SelectItem>)}</SelectContent></Select>
             </div>
             <Button type="submit" size="lg" disabled={searching} className="rounded-xl md:rounded-full"><Search data-icon="inline-start" /> {searching ? "Buscando…" : "Buscar"}</Button>
           </form>
@@ -216,12 +231,12 @@ export function Dashboard({ events, demo, signedIn, userName, interestTopics, in
             <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:items-center">
               <div className="hide-scrollbar flex min-w-0 gap-2 overflow-x-auto pb-1">
                 {topics.map((item) => (
-                  <Button key={item} onClick={() => { setTopic(item); setSubtopic("Todos"); }} variant={topic === item ? "default" : "outline"} size="sm" className="min-h-11 shrink-0 rounded-full">
+                  <Button key={item} onClick={() => { setTopic(item); setSubtopic("Todos"); setPage(1); }} variant={topic === item ? "default" : "outline"} size="sm" className="min-h-11 shrink-0 rounded-full">
                     {topic === item && <Check />} {item}
                   </Button>
                 ))}
               </div>
-              {topic !== "Todos" && subtopics.length > 1 && <Select value={subtopic} onValueChange={setSubtopic}><SelectTrigger aria-label={topic === "Música" ? "Filtrar por género musical" : "Filtrar por subcategoría"} className="w-full shrink-0 rounded-full sm:w-48"><SelectValue placeholder={topic === "Música" ? "Género musical" : "Subcategoría"} /></SelectTrigger><SelectContent>{subtopics.map((item) => <SelectItem value={item} key={item}>{item}</SelectItem>)}</SelectContent></Select>}
+              {topic !== "Todos" && subtopics.length > 1 && <Select value={subtopic} onValueChange={(value) => { setSubtopic(value); setPage(1); }}><SelectTrigger aria-label={topic === "Música" ? "Filtrar por género musical" : "Filtrar por subcategoría"} className="w-full shrink-0 rounded-full sm:w-48"><SelectValue placeholder={topic === "Música" ? "Género musical" : "Subcategoría"} /></SelectTrigger><SelectContent>{subtopics.map((item) => <SelectItem value={item} key={item}>{item}</SelectItem>)}</SelectContent></Select>}
             </div>
             <div className="flex items-center justify-between gap-3">
               <p className="text-sm text-zinc-400" aria-live="polite">{filtered.length} resultado{filtered.length === 1 ? "" : "s"}{city !== "Todo Chile" ? ` en ${city}` : ""}</p>
@@ -229,7 +244,7 @@ export function Dashboard({ events, demo, signedIn, userName, interestTopics, in
             </div>
           </div>
 
-          {!filtered.length ? <EmptyState query={deferredQuery} onReset={resetFilters} /> : <><TabsContent value="list"><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">{filtered.map((event, index) => <EventTile key={event.id} event={event} index={index} onOpen={() => openEvent(event)} />)}</div></TabsContent><TabsContent value="map"><EventMap events={filtered} /></TabsContent></>}
+          {!filtered.length ? <EmptyState query={deferredQuery} onReset={resetFilters} /> : <><TabsContent value="list"><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">{visibleEvents.map((event, index) => <EventTile key={event.id} event={event} index={index} onOpen={() => openEvent(event)} />)}</div></TabsContent><TabsContent value="map"><EventMap events={visibleEvents} /></TabsContent><EventPagination currentPage={currentPage} pageSize={pageSize} total={filtered.length} totalPages={totalPages} onPageChange={changePage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); scrollToEvents(); }} /></>}
         </Tabs>
       </div>
 
@@ -249,6 +264,32 @@ export function Dashboard({ events, demo, signedIn, userName, interestTopics, in
         </DialogContent>
       </Dialog>
     </main>
+  );
+}
+
+function EventPagination({ currentPage, pageSize, total, totalPages, onPageChange, onPageSizeChange }: { currentPage: number; pageSize: (typeof pageSizes)[number]; total: number; totalPages: number; onPageChange: (page: number) => void; onPageSizeChange: (size: (typeof pageSizes)[number]) => void }) {
+  const firstResult = (currentPage - 1) * pageSize + 1;
+  const lastResult = Math.min(currentPage * pageSize, total);
+  const numberedPages = Array.from({ length: totalPages }, (_, index) => index + 1).filter((item) => item === 1 || item === totalPages || Math.abs(item - currentPage) <= 1);
+
+  return (
+    <nav aria-label="Paginación de eventos" className="mt-8 flex flex-col gap-4 rounded-2xl border border-white/10 bg-white/[.035] p-4 sm:flex-row sm:items-center sm:justify-between">
+      <p className="text-sm tabular-nums text-zinc-400" aria-live="polite">Mostrando <b className="font-medium text-zinc-200">{firstResult}–{lastResult}</b> de {total}</p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="flex items-center justify-between gap-3 text-sm text-zinc-400 sm:justify-start">
+          Eventos por página
+          <Select value={String(pageSize)} onValueChange={(value) => onPageSizeChange(Number(value) as (typeof pageSizes)[number])}>
+            <SelectTrigger aria-label="Eventos por página" className="w-24 bg-black/15 tabular-nums"><SelectValue /></SelectTrigger>
+            <SelectContent>{pageSizes.map((size) => <SelectItem value={String(size)} key={size}>{size}</SelectItem>)}</SelectContent>
+          </Select>
+        </div>
+        <div className="flex max-w-full items-center justify-start gap-1 overflow-x-auto pb-1 sm:justify-between" aria-label={`Página ${currentPage} de ${totalPages}`}>
+          <Button variant="outline" size="icon" className="size-11" disabled={currentPage === 1} onClick={() => onPageChange(currentPage - 1)} aria-label="Página anterior"><ChevronLeft /></Button>
+          {numberedPages.map((item, index) => <span key={item} className="contents">{index > 0 && item - numberedPages[index - 1] > 1 && <span className="grid size-8 place-items-center text-zinc-500" aria-hidden="true">…</span>}<Button variant={item === currentPage ? "default" : "ghost"} size="icon" className="size-11 tabular-nums" aria-current={item === currentPage ? "page" : undefined} onClick={() => onPageChange(item)} aria-label={`Página ${item}`}>{item}</Button></span>)}
+          <Button variant="outline" size="icon" className="size-11" disabled={currentPage === totalPages} onClick={() => onPageChange(currentPage + 1)} aria-label="Página siguiente"><ChevronRight /></Button>
+        </div>
+      </div>
+    </nav>
   );
 }
 
