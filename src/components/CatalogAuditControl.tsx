@@ -15,13 +15,17 @@ type AuditResult = {
   remaining: number;
 };
 
-export function CatalogAuditControl({ version, initialRemaining }: { version: number; initialRemaining: number }) {
+export function CatalogAuditControl({ version, initialRemaining, paused }: { version: number; initialRemaining: number; paused: boolean }) {
   const router = useRouter();
   const [remaining, setRemaining] = useState(initialRemaining);
   const [running, setRunning] = useState(false);
-  const [message, setMessage] = useState(initialRemaining ? "Lista para revisar el siguiente registro." : "Todos los eventos alcanzaron la versión actual.");
+  const [message, setMessage] = useState(paused ? "La auditoría está detenida mientras el uso de créditos esté en pausa." : initialRemaining ? "Lista para revisar el siguiente registro." : "Todos los eventos alcanzaron la versión actual.");
 
   async function runAudit() {
+    if (paused) {
+      setMessage("Reanuda el uso de créditos antes de ejecutar una auditoría.");
+      return;
+    }
     setRunning(true);
     setMessage("Revisando fuente, vigencia, imagen y ubicación…");
     try {
@@ -49,9 +53,9 @@ export function CatalogAuditControl({ version, initialRemaining }: { version: nu
       </div>
       <CardDescription>Revisa un evento por ejecución y valida todas sus fuentes, fechas, imagen y ubicación. El worker continuará con el resto automáticamente.</CardDescription>
       <CardAction>
-        <Button onClick={runAudit} disabled={running || remaining === 0}>
+        <Button onClick={runAudit} disabled={running || remaining === 0 || paused}>
           {running ? <LoaderCircle className="animate-spin" data-icon="inline-start" /> : remaining ? <ScanSearch data-icon="inline-start" /> : <ShieldCheck data-icon="inline-start" />}
-          {running ? "Auditando…" : remaining ? "Auditar siguiente" : "Catálogo al día"}
+          {running ? "Auditando…" : paused ? "Pausa activa" : remaining ? "Auditar siguiente" : "Catálogo al día"}
         </Button>
       </CardAction>
     </CardHeader>

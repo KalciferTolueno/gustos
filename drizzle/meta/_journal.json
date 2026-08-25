@@ -50,6 +50,13 @@
       "when": 1787570184074,
       "tag": "0006_cloudy_thunderbolts",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1787599200000,
+      "tag": "0007_agent_controls",
+      "breakpoints": true
     }
   ]
 }

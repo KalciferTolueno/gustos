@@ -165,6 +165,12 @@ export const agentRuns = pgTable("agent_runs", {
   finishedAt: timestamp("finished_at", { mode: "date", withTimezone: true }),
 });
 
+export const agentControls = pgTable("agent_controls", {
+  id: text("id").primaryKey(),
+  paused: boolean("paused").notNull().default(false),
+  updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true }).notNull().defaultNow(),
+});
+
 export const discoveryQueries = pgTable(
   "discovery_queries",
   {

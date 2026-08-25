@@ -36,6 +36,8 @@ export type EventCard = Pick<
   | "modality"
 > & { categoryName: string; topicNames: string[]; filterNames: string[] };
 
+export type PendingModerationEvent = EventCard & { moderationSourceUrl: string };
+
 const demoEvents: EventCard[] = [
   {
     id: "demo-techno",
@@ -516,6 +518,41 @@ export async function listEvents(): Promise<{ events: EventCard[]; demo: boolean
     grouped.set(row.event.id, current);
   }
   return { events: [...grouped.values()], demo: false };
+}
+
+export async function listPendingModerationEvents(): Promise<PendingModerationEvent[]> {
+  const db = getDb();
+  const categoryRows = await db.select({ id: topics.id, name: topics.name }).from(topics).where(eq(topics.type, "category"));
+  const categories = new Map(categoryRows.map((category) => [category.id, category.name]));
+  const rows = await db
+    .select({ event: events, topicName: topics.name, topicType: topics.type })
+    .from(events)
+    .leftJoin(eventTopics, eq(eventTopics.eventId, events.id))
+    .leftJoin(topics, eq(topics.id, eventTopics.topicId))
+    .where(eq(events.status, "pending"))
+    .orderBy(asc(events.startsAt));
+
+  const grouped = new Map<string, PendingModerationEvent>();
+  for (const row of rows) {
+    const current = grouped.get(row.event.id) ?? {
+      ...row.event,
+      sourceUrl: isSpecificEventSourceUrl(row.event.sourceUrl, row.event.title) ? row.event.sourceUrl : "",
+      moderationSourceUrl: row.event.sourceUrl,
+      categoryName: categories.get(row.event.categoryId ?? 0) ?? "Panorama",
+      topicNames: [],
+      filterNames: [],
+    };
+    if (row.topicName) {
+      current.topicNames.push(row.topicName);
+      const detectedGenres = musicGenresFromLabels([row.topicName]);
+      const names = current.categoryName === "Música"
+        ? row.topicType === "genre" ? detectedGenres.length ? detectedGenres : [row.topicName] : detectedGenres
+        : row.topicType === "topic" ? [row.topicName] : [];
+      for (const name of names) if (!current.filterNames.includes(name)) current.filterNames.push(name);
+    }
+    grouped.set(row.event.id, current);
+  }
+  return [...grouped.values()];
 }
 
 export async function saveCandidate(candidate: {

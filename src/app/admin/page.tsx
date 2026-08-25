@@ -1,11 +1,14 @@
-import { asc, desc, eq, sql } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import Link from "next/link";
 import { CatalogAuditControl } from "@/components/CatalogAuditControl";
+import { AgentPauseControl } from "@/components/AgentPauseControl";
 import { ModerationList } from "@/components/ModerationList";
 import { getDb } from "@/db";
 import { agentRuns, discoveryQueries, events, searchRequests } from "@/db/schema";
 import { currentUser } from "@/lib/current-user";
 import { CATALOG_AUDIT_VERSION, catalogAuditCandidateCondition } from "@/lib/catalog-audit";
+import { listPendingModerationEvents } from "@/lib/events";
+import { isAgentPaused } from "@/lib/agent-control";
 
 export const dynamic = "force-dynamic";
 
@@ -15,13 +18,14 @@ export default async function AdminPage() {
   const user = await currentUser();
   if (user?.role !== "admin") return <main id="main-content" className="form-page"><div className="form-card success-card"><h1>Acceso Restringido</h1><Link href="/">Volver</Link></div></main>;
   const db = getDb();
-  const [pending, [usage], coverage, recentRuns, recentSearches, [auditProgress]] = await Promise.all([
-    db.select({ id: events.id, title: events.title, city: events.city, startsAt: events.startsAt, sourceUrl: events.sourceUrl, sourceName: events.sourceName }).from(events).where(eq(events.status, "pending")).orderBy(asc(events.startsAt)),
+  const [pending, [usage], coverage, recentRuns, recentSearches, [auditProgress], agentPaused] = await Promise.all([
+    listPendingModerationEvents(),
     db.select({ searches: sql<number>`coalesce(sum(${agentRuns.searches}), 0)`, inputTokens: sql<number>`coalesce(sum(${agentRuns.inputTokens}), 0)`, outputTokens: sql<number>`coalesce(sum(${agentRuns.outputTokens}), 0)`, cost: sql<number>`coalesce(sum(${agentRuns.estimatedCostMicros}), 0)` }).from(agentRuns),
     db.select({ category: discoveryQueries.categorySlug, region: discoveryQueries.region, status: discoveryQueries.status }).from(discoveryQueries).where(eq(discoveryQueries.kind, "coverage")),
     db.select().from(agentRuns).orderBy(desc(agentRuns.startedAt)).limit(20),
     db.select({ query: discoveryQueries.displayQuery, cacheHit: searchRequests.cacheHit, searches: searchRequests.searches, resultCount: searchRequests.resultCount, status: searchRequests.status, createdAt: searchRequests.createdAt }).from(searchRequests).leftJoin(discoveryQueries, eq(discoveryQueries.id, searchRequests.queryId)).orderBy(desc(searchRequests.createdAt)).limit(20),
     db.select({ remaining: sql<number>`count(*)` }).from(events).where(catalogAuditCandidateCondition()),
+    isAgentPaused(),
   ]);
   const coverageTotal = coverage.length;
   const coverageReady = coverage.filter((row) => row.status === "ready").length;
@@ -36,7 +40,8 @@ export default async function AdminPage() {
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         {[["Búsquedas web", usage.searches], ["Tokens entrada", usage.inputTokens], ["Tokens salida", usage.outputTokens], ["Costo estimado", `$${(Number(usage.cost) / 1_000_000).toFixed(2)}`], ["Cobertura", `${coverageReady}/${coverageTotal}`]].map(([label, value]) => <div key={label} className="rounded-2xl border border-white/10 bg-white/[.04] p-5"><p className="text-xs uppercase tracking-wider text-zinc-500">{label}</p><strong className="mt-2 block text-2xl">{String(value)}</strong></div>)}
       </section>
-      <CatalogAuditControl version={CATALOG_AUDIT_VERSION} initialRemaining={Number(auditProgress.remaining)} />
+      <AgentPauseControl initialPaused={agentPaused} />
+      <CatalogAuditControl version={CATALOG_AUDIT_VERSION} initialRemaining={Number(auditProgress.remaining)} paused={agentPaused} />
       <section className="grid gap-6 xl:grid-cols-2">
         <div className="overflow-hidden rounded-2xl border border-white/10"><h2 className="border-b border-white/10 p-4 font-medium">Ejecuciones Recientes</h2><div className="overflow-x-auto"><table className="w-full text-left text-sm"><caption className="sr-only">Últimas ejecuciones del agente de descubrimiento</caption><thead className="text-zinc-500"><tr><th scope="col" className="p-3">Fecha</th><th scope="col">Estado</th><th scope="col">Tipo</th><th scope="col">Búsquedas</th><th scope="col">Resultados</th></tr></thead><tbody>{recentRuns.map((run) => <tr key={run.id} className="border-t border-white/5"><td className="p-3 text-zinc-400">{formatDate(run.startedAt)}</td><td>{run.status}</td><td>{run.kind}</td><td>{run.searches}</td><td>{run.published}</td></tr>)}</tbody></table></div></div>
         <div className="overflow-hidden rounded-2xl border border-white/10"><h2 className="border-b border-white/10 p-4 font-medium">Búsquedas de Usuarios</h2><div className="overflow-x-auto"><table className="w-full text-left text-sm"><caption className="sr-only">Últimas búsquedas realizadas por usuarios</caption><thead className="text-zinc-500"><tr><th scope="col" className="p-3">Fecha</th><th scope="col">Consulta</th><th scope="col">Estado</th><th scope="col">Resultados</th></tr></thead><tbody>{recentSearches.map((search, index) => <tr key={`${search.createdAt.toISOString()}-${index}`} className="border-t border-white/5"><td className="p-3 text-zinc-400">{formatDate(search.createdAt)}</td><td className="max-w-56 truncate">{search.query ?? "-"}{search.cacheHit ? " (caché)" : ""}</td><td>{search.status}</td><td>{search.resultCount}</td></tr>)}</tbody></table></div></div>

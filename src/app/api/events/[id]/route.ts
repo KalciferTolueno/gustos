@@ -5,7 +5,6 @@ import { getDb } from "@/db";
 import { eventSourceObservations, eventSources, eventTopics, events, topics } from "@/db/schema";
 import { currentUser } from "@/lib/current-user";
 import { ensureEventImage } from "@/lib/event-images";
-import { eventSourceContainsEvent } from "@/lib/event-source-validation";
 import { currentOrFutureEventCondition, isSpecificEventSourceUrl } from "@/lib/events";
 
 const actionSchema = z.object({ action: z.enum(["approve", "reject"]) });
@@ -38,15 +37,6 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const parsed = actionSchema.safeParse(await request.json());
   if (!parsed.success) return NextResponse.json({ error: "Invalid action" }, { status: 400 });
   const { id } = await params;
-  if (parsed.data.action === "approve") {
-    const [event] = await getDb().select({ title: events.title, sourceUrl: events.sourceUrl }).from(events).where(eq(events.id, id)).limit(1);
-    if (!event || !isSpecificEventSourceUrl(event.sourceUrl, event.title)) return NextResponse.json({ error: "La fuente no es una página específica del evento" }, { status: 422 });
-    try {
-      if (!(await eventSourceContainsEvent(event.sourceUrl, event.title))) return NextResponse.json({ error: "La página ya no contiene el evento anunciado" }, { status: 422 });
-    } catch {
-      return NextResponse.json({ error: "No fue posible validar la página del evento" }, { status: 422 });
-    }
-  }
   const [updated] = await getDb().update(events).set({
     status: parsed.data.action === "approve" ? "published" : "rejected",
     confidence: parsed.data.action === "approve" ? 100 : 0,

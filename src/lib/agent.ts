@@ -8,6 +8,7 @@ import { eventHasNotEnded, isSpecificEventSourceUrl, normalizedSourceUrl, popula
 import { categoryNames, categorySlugs, type CategorySlug } from "./taxonomy";
 import { consultedWebUrls } from "./web-evidence";
 import { eventSourceContainsEvent } from "./event-source-validation";
+import { isAgentPaused } from "./agent-control";
 
 const referenceSchema = z.object({ name: z.string().min(2), url: z.url() });
 
@@ -95,6 +96,7 @@ export async function beginAgentRun(kind: string, target?: string) {
   if (process.env.AGENT_ENABLED === "false") return { skipped: true as const, reason: "disabled" };
   if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required by the discovery agent");
   if (!process.env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is required by the discovery agent");
+  if (await isAgentPaused()) return { skipped: true as const, reason: "paused" };
   const db = getDb();
   const bootstrap = await coverageBootstrapPending();
   const dailyLimit = Number(bootstrap ? process.env.AGENT_BOOTSTRAP_SEARCHES_PER_DAY ?? 0 : process.env.AGENT_SEARCHES_PER_DAY ?? 0);

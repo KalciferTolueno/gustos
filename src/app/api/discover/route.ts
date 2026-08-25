@@ -8,6 +8,7 @@ import { completeQuery, queryEventIds, queryIsFresh, recordDiscoveryQuery } from
 import { matchesEventSearch } from "@/lib/event-search";
 import { listEvents } from "@/lib/events";
 import { allowAuthAttempt, requesterHash, requestIp } from "@/lib/rate-limit";
+import { isAgentPaused } from "@/lib/agent-control";
 
 const schema = z.object({ query: z.string().trim().min(2).max(80) });
 
@@ -15,6 +16,7 @@ export async function POST(request: Request) {
   if (!process.env.DATABASE_URL || !process.env.OPENAI_API_KEY) {
     return NextResponse.json({ error: "La búsqueda web no está disponible." }, { status: 503 });
   }
+  if (await isAgentPaused()) return NextResponse.json({ error: "La búsqueda web está pausada temporalmente." }, { status: 503 });
   const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Escribe al menos 2 caracteres." }, { status: 400 });
   const query = await recordDiscoveryQuery(parsed.data.query);

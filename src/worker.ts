@@ -7,6 +7,7 @@ import { ensureCanonicalTaxonomy, type CategorySlug } from "./lib/taxonomy";
 import { repairGenericEventSources } from "./lib/source-repair";
 import { verifyNextEvent } from "./lib/verification";
 import { auditExistingEvents } from "./lib/catalog-audit";
+import { isAgentPaused } from "./lib/agent-control";
 
 const interval = Math.max(15, Number(process.env.AGENT_INTERVAL_MINUTES ?? 15)) * 60_000;
 const queriesPerRun = Math.max(1, Number(process.env.AGENT_QUERIES_PER_RUN ?? 8));
@@ -30,6 +31,10 @@ async function run() {
   }
   running = true;
   try {
+    if (await isAgentPaused()) {
+      console.log(new Date().toISOString(), "agent usage is paused; skipping cycle");
+      return;
+    }
     console.log(new Date().toISOString(), "starting discovery");
     console.log(await expirePastEvents());
     await ensureCanonicalTaxonomy();
