@@ -34,12 +34,12 @@ export function EventMap({ events }: { events: EventCard[] }) {
             <Popup>
               <strong>{event.title}</strong>
               <br />
-              {[event.venue, event.address, event.city].filter(Boolean).join(" · ")}
+              {[event.venue, event.address, event.city].filter(Boolean).join(", ")}
             </Popup>
           </Marker>
         ))}
       </MapContainer>
-      <div className="map-count"><b>{located.length}</b> ubicaciones exactas{pending > 0 ? ` · ${pending} pendientes de verificar` : ""}</div>
+      <div className="map-count"><b>{located.length}</b> ubicaciones exactas{pending > 0 ? `, ${pending} pendientes de verificar` : ""}</div>
     </div>
   );
 }

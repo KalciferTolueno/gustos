@@ -17,7 +17,7 @@ function TabsTrigger({ className, ...props }: React.ComponentProps<typeof TabsPr
 }
 
 function TabsContent({ className, ...props }: React.ComponentProps<typeof TabsPrimitive.Content>) {
-  return <TabsPrimitive.Content className={cn("outline-none", className)} {...props} />;
+  return <TabsPrimitive.Content className={cn("outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background", className)} {...props} />;
 }
 
 export { Tabs, TabsContent, TabsList, TabsTrigger };

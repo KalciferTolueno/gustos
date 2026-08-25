@@ -52,7 +52,7 @@ export function EmailAuthForm({ google, discord }: { google: boolean; discord: b
           <label><span>Contraseña</span><div><LockKeyhole size={18} aria-hidden="true" /><input name="password" type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} minLength={mode === "register" ? 12 : 1} maxLength={200} required /></div></label>
           {mode === "register" && <small>12 caracteres como mínimo, con letras y números.</small>}
           {error && <div className="form-error" role="alert">{error}</div>}
-          <button type="submit" disabled={loading}>{loading ? "Procesando…" : mode === "login" ? "Entrar" : "Crear Cuenta"}</button>
+          <button type="submit" disabled={loading}>{loading ? "Procesando…" : mode === "login" ? "Entrar" : "Crear cuenta"}</button>
         </form>
         {(google || discord) && <><div className="auth-divider"><span>o continúa con</span></div><div className="social-login">{google && <button type="button" onClick={() => signIn("google", { callbackUrl: "/" })}>Google</button>}{discord && <button type="button" onClick={() => signIn("discord", { callbackUrl: "/" })}>Discord</button>}</div></>}
       </section>

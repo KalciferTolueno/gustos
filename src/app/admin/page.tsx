@@ -34,7 +34,7 @@ export default async function AdminPage() {
     return { name, ready: rows.filter((row) => row.status === "ready").length, total: rows.length };
   });
 
-  return <main id="main-content" className="min-h-screen bg-[#0b0c0e] px-4 py-8 text-zinc-100 sm:px-8">
+  return <main id="main-content" className="min-h-[100dvh] bg-[#0b0c0e] px-4 py-8 text-zinc-100 sm:px-8">
     <div className="mx-auto max-w-7xl space-y-8">
       <header className="flex items-end justify-between gap-4"><div><span className="text-xs tracking-[.2em] text-emerald-400">CONTROL DE CALIDAD</span><h1 className="mt-2 text-3xl font-semibold">Administración</h1></div><Link href="/" className="text-sm text-zinc-400 hover:text-white">Volver a la app</Link></header>
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
