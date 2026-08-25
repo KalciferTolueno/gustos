@@ -25,6 +25,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { matchesEventSearch } from "@/lib/event-search";
+import { eventDateRangeLabels, formatEventSchedule } from "@/lib/event-date-format";
 import type { EventCard } from "@/lib/events";
 import { EmailAuthForm } from "@/components/EmailAuthForm";
 import { DatitoMark } from "@/components/DatitoMark";
@@ -45,8 +46,6 @@ const EventMap = dynamic(() => import("./EventMap").then((module) => module.Even
 });
 
 const chileTimeZone = "America/Santiago";
-const dateFormatter = new Intl.DateTimeFormat("es-CL", { day: "numeric", month: "short", year: "numeric", timeZone: chileTimeZone });
-const fullDateFormatter = new Intl.DateTimeFormat("es-CL", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: chileTimeZone });
 const dateOnlyFormatter = new Intl.DateTimeFormat("es-CL", { weekday: "short", day: "numeric", month: "short", timeZone: chileTimeZone });
 const verifiedDateFormatter = new Intl.DateTimeFormat("es-CL", { dateStyle: "medium", timeStyle: "short", timeZone: chileTimeZone });
 const eventStateLabels: Record<string, string> = { scheduled: "Programado", postponed: "Postergado", cancelled: "Cancelado", completed: "Finalizado" };
@@ -293,7 +292,8 @@ function EventPagination({ currentPage, pageSize, total, totalPages, onPageChang
 }
 
 function EventTile({ event, index, isAdmin, onOpen }: { event: EventCard; index: number; isAdmin: boolean; onOpen: () => void }) {
-  const date = new Date(event.startsAt);
+  const dateRange = eventDateRangeLabels(event);
+  const endDateTime = event.endsAt ? new Date(event.endsAt).toISOString() : null;
   const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
   const image = event.imageUrl && event.imageUrl !== failedImageUrl ? event.imageUrl : null;
   return (
@@ -301,7 +301,10 @@ function EventTile({ event, index, isAdmin, onOpen }: { event: EventCard; index:
       <div className="event-visual relative h-64 overflow-hidden">
         {image && <Image src={image} alt="" fill unoptimized priority={index === 0} sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 20vw" className="z-0 object-cover" onError={() => setFailedImageUrl(image)} />}
         {!image && <EventImageFallback categoryName={event.categoryName} />}
-        <Badge className="absolute left-3 top-3 z-10 bg-black/55 text-zinc-100 backdrop-blur-md">{dateFormatter.format(date)}</Badge>
+        <Badge className="absolute left-3 top-3 z-10 flex-col items-start gap-0.5 bg-black/55 py-1.5 leading-tight text-zinc-100 backdrop-blur-md">
+          <time dateTime={new Date(event.startsAt).toISOString()}>{dateRange.end ? `Desde ${dateRange.start}` : dateRange.start}</time>
+          {dateRange.end && endDateTime && <time dateTime={endDateTime}>Hasta {dateRange.end}</time>}
+        </Badge>
         <Badge variant="outline" className="absolute right-3 top-3 z-10 bg-black/55 text-zinc-100 backdrop-blur-md">{isAdmin ? (event.eventState === "scheduled" ? `${event.confidence}% confianza` : eventStateLabels[event.eventState]) : event.categoryName}</Badge>
         <div className="absolute inset-x-0 bottom-0 z-10 p-4">
           <h2 className="line-clamp-2 text-lg font-semibold leading-tight tracking-tight text-white">{event.title}</h2>
@@ -325,16 +328,44 @@ function EventDetail({ detail, fallback, loading }: { detail: EventDetailData | 
   const event = detail ? { ...fallback, ...detail.event, topicNames: detail.topicNames, filterNames: fallback.filterNames } : fallback;
   const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
   const image = event.imageUrl && event.imageUrl !== failedImageUrl ? event.imageUrl : null;
-  return <div className="space-y-5"><div className="event-detail-visual relative h-56 overflow-hidden rounded-xl bg-zinc-900">{image && <Image src={image} alt="" fill unoptimized sizes="(max-width: 768px) 100vw, 768px" className="z-0 object-cover" onError={() => setFailedImageUrl(image)} />}{!image && <EventImageFallback categoryName={event.categoryName} />}<div className="absolute inset-x-0 bottom-0 z-10 p-5"><Badge variant="secondary">{eventStateLabels[event.eventState] ?? event.eventState}</Badge><DialogTitle className="mt-3 text-3xl">{event.title}</DialogTitle></div></div><p className="text-sm leading-7 text-zinc-300">{event.description}</p><div className="grid gap-3 rounded-xl border border-white/10 bg-white/4 p-4 text-sm text-zinc-300 sm:grid-cols-2"><span className="flex gap-2"><CalendarDays className="size-4 shrink-0" />{formatEventSchedule(event)}</span><span className="flex gap-2"><MapPin className="size-4 shrink-0" />{[event.venue, event.address, event.city, event.region].filter(Boolean).join(" · ")}</span>{event.priceLabel && <span className="flex gap-2"><Ticket className="size-4 shrink-0" />{event.priceLabel}</span>}<span className="flex gap-2"><Clock3 className="size-4 shrink-0" />Verificado {event.verifiedAt ? verifiedDateFormatter.format(new Date(event.verifiedAt)) : "pendiente"}</span></div>{event.statusReason && <div className="rounded-xl border border-amber-900 bg-amber-950 p-4 text-sm text-amber-50">{event.statusReason}</div>}<section><h3 className="font-medium">Fuentes y verificaciones</h3>{loading && <p className="mt-2 text-sm text-zinc-400">Cargando referencias...</p>}{!loading && !detail?.sources.length && <p className="mt-2 text-sm text-zinc-400">Solo hay una referencia disponible para este evento.</p>}<div className="mt-3 grid gap-3">{detail?.sources.map((source) => <div key={source.id} className="rounded-xl border border-white/10 p-4"><div className="flex items-center justify-between gap-3"><div><b className="text-sm">{source.name}</b>{source.isPrimary && <Badge variant="secondary" className="ml-2">Principal</Badge>}</div><Button asChild variant="outline" size="sm"><a href={source.url} target="_blank" rel="noreferrer">Abrir <ExternalLink /></a></Button></div><div className="mt-3 grid gap-2">{source.observations.slice(0, 3).map((observation) => <p key={observation.id} className="border-l border-white/10 pl-3 text-xs leading-5 text-zinc-400"><b className="text-zinc-300">{eventStateLabels[observation.observedState] ?? observation.observedState}</b> · {observation.evidence} · {dateOnlyFormatter.format(new Date(observation.checkedAt))}</p>)}</div></div>)}</div></section></div>;
-}
-
-function formatEventSchedule(event: Pick<EventCard, "startsAt" | "endsAt" | "timePrecision">) {
-  const startsAt = new Date(event.startsAt);
-  if (event.timePrecision !== "date") return fullDateFormatter.format(startsAt);
-  const start = dateOnlyFormatter.format(startsAt);
-  if (!event.endsAt) return `${start} · Horario por confirmar`;
-  const end = dateOnlyFormatter.format(new Date(event.endsAt));
-  return end === start ? `${start} · Horario por confirmar` : `${start} – ${end} · Horario por confirmar`;
+  return (
+    <div className="space-y-5">
+      <div className="event-detail-visual relative h-56 overflow-hidden rounded-xl bg-zinc-900">
+        {image && <Image src={image} alt="" fill unoptimized sizes="(max-width: 768px) 100vw, 768px" className="z-0 object-cover" onError={() => setFailedImageUrl(image)} />}
+        {!image && <EventImageFallback categoryName={event.categoryName} />}
+        <div className="absolute inset-x-0 bottom-0 z-10 p-5">
+          <Badge variant="secondary">{eventStateLabels[event.eventState] ?? event.eventState}</Badge>
+          <DialogTitle className="mt-3 text-3xl">{event.title}</DialogTitle>
+        </div>
+      </div>
+      <p className="text-sm leading-7 text-zinc-300">{event.description}</p>
+      <div className="grid gap-3 rounded-xl border border-white/10 bg-white/4 p-4 text-sm text-zinc-300 sm:grid-cols-2">
+        <span className="flex gap-2"><CalendarDays className="size-4 shrink-0" />{formatEventSchedule(event)}</span>
+        <span className="flex gap-2"><MapPin className="size-4 shrink-0" />{[event.venue, event.address, event.city, event.region].filter(Boolean).join(" · ")}</span>
+        {event.priceLabel && <span className="flex gap-2"><Ticket className="size-4 shrink-0" />{event.priceLabel}</span>}
+        <span className="flex gap-2"><Clock3 className="size-4 shrink-0" />Verificado {event.verifiedAt ? verifiedDateFormatter.format(new Date(event.verifiedAt)) : "pendiente"}</span>
+      </div>
+      {event.statusReason && <div className="rounded-xl border border-amber-900 bg-amber-950 p-4 text-sm text-amber-50">{event.statusReason}</div>}
+      <section>
+        <h3 className="font-medium">Fuentes y verificaciones</h3>
+        {loading && <p className="mt-2 text-sm text-zinc-400">Cargando referencias...</p>}
+        {!loading && !detail?.sources.length && <p className="mt-2 text-sm text-zinc-400">Solo hay una referencia disponible para este evento.</p>}
+        <div className="mt-3 grid gap-3">
+          {detail?.sources.map((source) => (
+            <div key={source.id} className="rounded-xl border border-white/10 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div><b className="text-sm">{source.name}</b>{source.isPrimary && <Badge variant="secondary" className="ml-2">Principal</Badge>}</div>
+                <Button asChild variant="outline" size="sm"><a href={source.url} target="_blank" rel="noreferrer">Abrir <ExternalLink /></a></Button>
+              </div>
+              <div className="mt-3 grid gap-2">
+                {source.observations.slice(0, 3).map((observation) => <p key={observation.id} className="border-l border-white/10 pl-3 text-xs leading-5 text-zinc-400"><b className="text-zinc-300">{eventStateLabels[observation.observedState] ?? observation.observedState}</b> · {observation.evidence} · {dateOnlyFormatter.format(new Date(observation.checkedAt))}</p>)}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
 }
 
 function EmptyState({ query, onReset }: { query: string; onReset: () => void }) {

@@ -124,6 +124,8 @@ Reglas actuales:
 - Si una fuente agrega un subtítulo promocional y otra no, se permite una diferencia de hora dentro del mismo día.
 - Las ciudades deben coincidir cuando ambas existen.
 - Los recintos deben coincidir, contenerse textualmente o faltar en una fuente.
+- Los rangos se consideran completos: una ficha que comienza dentro del rango de otra se fusiona cuando comparte la misma URL específica, o cuando título y recinto coinciden exactamente.
+- Dos funciones recurrentes con rangos que no se superponen permanecen separadas aunque reutilicen título o URL.
 - Si faltan ciudad o recinto y existen varias coincidencias posibles, no se fusiona por adivinación.
 
 Ejemplo cubierto por prueba:
@@ -161,7 +163,7 @@ Al iniciar cada ciclo, el worker marca como `expired` y `completed` los eventos 
 
 ## Auditoría completa del catálogo
 
-`src/lib/catalog-audit.ts` recorre uno por uno todos los eventos publicados, actuales o futuros. Cada registro pasa por validación de la página viva, verificación temporal, selección visual y ubicación. `events.catalog_audit_version` y `catalog_audited_at` forman un cursor persistente: los reinicios continúan donde quedó el worker y los fallos se reintentan sin bloquear el resto del catálogo. Una fuente incorrecta pone el evento en pendiente inmediatamente; una imagen dudosa se elimina; las coordenadas solo sobreviven si son exactas y están en Chile.
+`src/lib/catalog-audit.ts` recorre uno por uno todos los eventos publicados, actuales o futuros. También rescata registros marcados como vencidos durante los últimos tres años cuando no tenían `endsAt`, porque pueden ser exposiciones o actividades de larga duración cuyo término se omitió. Cada registro pasa por validación de la página viva, verificación temporal, selección visual y ubicación. `events.catalog_audit_version` y `catalog_audited_at` forman un cursor persistente: los reinicios continúan donde quedó el worker y los fallos se reintentan sin bloquear el resto del catálogo. Una fuente incorrecta pone el evento en pendiente inmediatamente; una imagen dudosa se elimina; las coordenadas solo sobreviven si son exactas y están en Chile.
 
 Cuando una nueva corrección deba aplicarse retroactivamente, incrementar `CATALOG_AUDIT_VERSION`. La variable `AGENT_CATALOG_AUDITS_PER_RUN` controla cuántos registros se revisan por ciclo (1 por defecto para limitar costo y carga). Las actualizaciones relevantes y aprobaciones manuales reinician la versión del registro a 0.
 
@@ -173,7 +175,7 @@ Cuando una nueva corrección deba aplicarse retroactivamente, incrementar `CATAL
 - Hasta 90 días: cada 3 días.
 - Más adelante: cada 7 días.
 
-Solo una fuente oficial/confiable puede cambiar fecha o recinto. Una cancelación necesita fuente oficial o evidencia independiente concordante. Las observaciones quedan en `event_source_observations`.
+Una página primaria específica, consultada y con confianza alta puede completar o corregir `startsAt` y `endsAt`; la fuente debe aportar siempre el rango total y distinguirlo del horario diario. Solo una fuente oficial/confiable puede cambiar recinto o confirmar estados sensibles. Una cancelación necesita fuente oficial o evidencia independiente concordante. Las observaciones quedan en `event_source_observations`.
 
 ## Modelo de datos
 

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, asc, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, lte, sql } from "drizzle-orm";
 import { getDb } from "../db";
 import { discoveryQueryEvents, eventSourceObservations, eventSources, eventTopics, events, topics, type EventRow } from "../db/schema";
 import { categoryNames, topicSlug, type CategorySlug } from "./taxonomy";
@@ -304,6 +304,35 @@ export function sameSourceOccurrence(first: { startsAt: Date; timePrecision?: st
   return sameDay && compatibleCities && compatibleLocation(first.venue, second.venue);
 }
 
+type EventRange = {
+  title: string;
+  startsAt: Date;
+  endsAt?: Date | null;
+  city?: string | null;
+  venue?: string | null;
+  sourceUrl?: string;
+};
+
+export function eventDateRangesOverlap(first: Pick<EventRange, "startsAt" | "endsAt">, second: Pick<EventRange, "startsAt" | "endsAt">) {
+  const firstEnd = first.endsAt ?? first.startsAt;
+  const secondEnd = second.endsAt ?? second.startsAt;
+  return first.startsAt <= secondEnd && second.startsAt <= firstEnd;
+}
+
+export function sameEventRange(first: EventRange, second: EventRange) {
+  if (!eventDateRangesOverlap(first, second)) return false;
+  const title = sameEventTitle(first.title, second.title);
+  if (!title.matches) return false;
+  const firstCity = normalizedText(first.city);
+  const secondCity = normalizedText(second.city);
+  const compatibleCities = !firstCity || !secondCity || firstCity === secondCity || (isSantiagoMetroCity(firstCity) && isSantiagoMetroCity(secondCity));
+  const compatibleVenues = compatibleLocation(first.venue, second.venue);
+  const sameNamedVenue = Boolean(normalizedText(first.venue) && normalizedText(second.venue) && compatibleVenues);
+  const sameSource = Boolean(first.sourceUrl && second.sourceUrl
+    && normalizedSourceUrl(first.sourceUrl, true) === normalizedSourceUrl(second.sourceUrl, true));
+  return compatibleCities && compatibleVenues && (sameSource || (title.exact && sameNamedVenue));
+}
+
 export function representativeEventTitle(titles: string[]) {
   return titles.filter((title) => /\s(?:y|e)\s|&/i.test(title)).sort((a, b) => b.length - a.length)[0] ?? null;
 }
@@ -341,16 +370,16 @@ export function eventIdentityKey(title: string, startsAt: Date, city?: string | 
 export async function consolidateDuplicateEvents(limit = Number.POSITIVE_INFINITY) {
   const db = getDb();
   const rows = await db.select().from(events).orderBy(asc(events.createdAt));
-  const occurrenceGroups = new Map<string, typeof rows>();
+  const seriesGroups = new Map<string, typeof rows>();
   for (const event of rows) {
-    const key = event.startsAt.toISOString().slice(0, 10);
-    occurrenceGroups.set(key, [...(occurrenceGroups.get(key) ?? []), event]);
+    const key = normalizedText(eventSeriesTitle(event.title));
+    seriesGroups.set(key, [...(seriesGroups.get(key) ?? []), event]);
   }
-  const groups = [...occurrenceGroups.values()].flatMap((eventsOnSameDay) => {
+  const groups = [...seriesGroups.values()].flatMap((eventsInSeries) => {
     const clusters: Array<typeof rows> = [];
-    const specificFirst = eventsOnSameDay.sort((a, b) => Number(Boolean(b.city)) + Number(Boolean(b.venue)) - Number(Boolean(a.city)) - Number(Boolean(a.venue)));
+    const specificFirst = eventsInSeries.sort((a, b) => Number(Boolean(b.city)) + Number(Boolean(b.venue)) - Number(Boolean(a.city)) - Number(Boolean(a.venue)));
     for (const event of specificFirst) {
-      const matchingIndexes = clusters.flatMap((cluster, index) => sameEventOccurrence(cluster[0], event) || sameSourceOccurrence(cluster[0], event) || sameFestivalSeries(cluster[0], event) ? [index] : []);
+      const matchingIndexes = clusters.flatMap((cluster, index) => cluster.some((existing) => sameEventOccurrence(existing, event) || sameSourceOccurrence(existing, event) || sameEventRange(existing, event) || sameFestivalSeries(existing, event)) ? [index] : []);
       if (matchingIndexes.length === 0) {
         clusters.push([event]);
       } else {
@@ -374,7 +403,13 @@ export async function consolidateDuplicateEvents(limit = Number.POSITIVE_INFINIT
     const canonicalVenue = sharedSeries && incompatibleVenues
       ? "Múltiples recintos"
       : venueNames.sort((a, b) => b.length - a.length)[0] ?? keeper.venue;
-    const identityKey = eventIdentityKey(canonicalTitle, keeper.startsAt, canonicalCity, canonicalVenue);
+    const earliestStart = group.reduce((earliest, event) => event.startsAt < earliest.startsAt ? event : earliest);
+    const earliestDay = earliestStart.startsAt.toISOString().slice(0, 10);
+    const exactTiming = group.find((event) => event.timePrecision === "exact" && event.startsAt.toISOString().slice(0, 10) === earliestDay);
+    const canonicalStartsAt = exactTiming?.startsAt ?? earliestStart.startsAt;
+    const canonicalEndsAt = group.map((event) => event.endsAt).filter((date): date is Date => Boolean(date)).sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
+    const identityKey = eventIdentityKey(canonicalTitle, canonicalStartsAt, canonicalCity, canonicalVenue);
+    const externalKey = eventKey(canonicalTitle, canonicalStartsAt, keeper.sourceUrl, canonicalVenue, canonicalCity);
     const duplicateIds = duplicates.map((event) => event.id);
     await db.transaction(async (tx) => {
       const topicRows = await tx.select({ topicId: eventTopics.topicId }).from(eventTopics).where(inArray(eventTopics.eventId, duplicateIds));
@@ -397,16 +432,16 @@ export async function consolidateDuplicateEvents(limit = Number.POSITIVE_INFINIT
       await tx.delete(events).where(inArray(events.id, duplicateIds));
       const best = group.find((event) => event.imageUrl);
       const longestDescription = group.map((event) => event.description).sort((a, b) => b.length - a.length)[0];
-      const exactTiming = group.find((event) => event.timePrecision === "exact");
       const exactLocation = group.find((event) => event.locationPrecision === "exact" && event.latitude != null && event.longitude != null);
       await tx.update(events).set({
         title: canonicalTitle,
+        externalKey,
         identityKey,
         imageUrl: keeper.imageUrl ?? best?.imageUrl,
         description: longestDescription,
-        startsAt: exactTiming?.startsAt ?? keeper.startsAt,
-        endsAt: exactTiming?.endsAt ?? keeper.endsAt ?? group.find((event) => event.endsAt)?.endsAt,
-        timePrecision: exactTiming ? "exact" : "date",
+        startsAt: canonicalStartsAt,
+        endsAt: canonicalEndsAt,
+        timePrecision: exactTiming ? "exact" : earliestStart.timePrecision,
         categoryId: keeper.categoryId ?? group.find((event) => event.categoryId)?.categoryId,
         city: canonicalCity,
         region: keeper.region ?? group.find((event) => event.region)?.region,
@@ -526,28 +561,33 @@ export async function saveCandidate(candidate: {
       timePrecision: events.timePrecision,
       city: events.city,
       venue: events.venue,
+      endsAt: events.endsAt,
       sourceUrl: eventSources.url,
     }).from(eventSources).innerJoin(events, eq(events.id, eventSources.eventId)).where(eq(eventSources.normalizedUrl, primaryUrl)).limit(1);
     const [identityMatch] = await tx.select({ id: events.id }).from(events).where(eq(events.identityKey, identityKey)).limit(1);
     const [externalMatch] = await tx.select({ id: events.id }).from(events).where(and(eq(events.externalKey, externalKey), eq(events.identityKey, identityKey))).limit(1);
-    const dayStart = new Date(candidate.startsAt); dayStart.setUTCHours(0, 0, 0, 0);
-    const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60_000);
-    const occurrenceRows = await tx.select({ id: events.id, title: events.title, startsAt: events.startsAt, timePrecision: events.timePrecision, city: events.city, venue: events.venue }).from(events).where(and(gte(events.startsAt, dayStart), lt(events.startsAt, dayEnd)));
-    const compatibleOccurrences = occurrenceRows.filter((item) => sameEventOccurrence(item, candidate));
+    const candidateEnd = candidate.endsAt ?? candidate.startsAt;
+    const occurrenceRows = await tx.select({ id: events.id, title: events.title, startsAt: events.startsAt, endsAt: events.endsAt, timePrecision: events.timePrecision, city: events.city, venue: events.venue, sourceUrl: events.sourceUrl }).from(events).where(and(
+      lte(events.startsAt, candidateEnd),
+      sql<boolean>`coalesce(${events.endsAt}, ${events.startsAt}) >= ${candidate.startsAt}`,
+    ));
+    const compatibleOccurrences = occurrenceRows.filter((item) => sameEventOccurrence(item, candidate) || sameEventRange(item, candidate));
     const occurrenceCities = new Set(compatibleOccurrences.map((item) => normalizedText(item.city)).filter(Boolean));
     const occurrenceVenues = new Set(compatibleOccurrences.map((item) => normalizedText(item.venue)).filter(Boolean));
     const occurrenceMatch = (normalizedText(candidate.city) || occurrenceCities.size <= 1) && (normalizedText(candidate.venue) || occurrenceVenues.size <= 1) ? compatibleOccurrences[0] : undefined;
-    const sourceMatches = sourceMatch && (sameEventOccurrence(sourceMatch, candidate) || sameSourceOccurrence(sourceMatch, candidate));
+    const sourceMatches = sourceMatch && (sameEventOccurrence(sourceMatch, candidate) || sameSourceOccurrence(sourceMatch, candidate) || sameEventRange(sourceMatch, candidate));
     const existingId = identityMatch?.id ?? externalMatch?.id ?? occurrenceMatch?.id ?? (sourceMatch && sourceMatches ? sourceMatch.eventId : undefined);
-    const [existing] = existingId ? await tx.select({ status: events.status, identityKey: events.identityKey, imageUrl: events.imageUrl, categoryId: events.categoryId, timePrecision: events.timePrecision, city: events.city, region: events.region, venue: events.venue, address: events.address, latitude: events.latitude, longitude: events.longitude, locationPrecision: events.locationPrecision, sourceName: events.sourceName, sourceUrl: events.sourceUrl }).from(events).where(eq(events.id, existingId)).limit(1) : [];
-    const existingIdentity = existing?.status !== "pending" && existing?.identityKey ? existing.identityKey : !identityMatch || identityMatch.id === existingId ? identityKey : null;
+    const [existing] = existingId ? await tx.select({ status: events.status, identityKey: events.identityKey, imageUrl: events.imageUrl, categoryId: events.categoryId, startsAt: events.startsAt, endsAt: events.endsAt, timePrecision: events.timePrecision, city: events.city, region: events.region, venue: events.venue, address: events.address, latitude: events.latitude, longitude: events.longitude, locationPrecision: events.locationPrecision, sourceName: events.sourceName, sourceUrl: events.sourceUrl }).from(events).where(eq(events.id, existingId)).limit(1) : [];
+    const refreshExisting = existing?.status === "pending" || existing?.status === "expired";
+    const existingIdentity = existing && !refreshExisting && existing.identityKey ? existing.identityKey : !identityMatch || identityMatch.id === existingId ? identityKey : null;
     const candidateHasExactTime = existing?.timePrecision === "date" && candidate.timePrecision === "exact";
+    const candidateHasBetterEnd = Boolean(candidate.endsAt && (!existing?.endsAt || candidate.endsAt > existing.endsAt));
     const candidateHasExactLocation = candidate.locationPrecision === "exact" && candidate.latitude != null && candidate.longitude != null;
     const shouldUpgradeSource = Boolean(existing && isSpecificEventSourceUrl(candidate.sourceUrl, candidate.title) && !isSpecificEventSourceUrl(existing.sourceUrl, candidate.title));
     const [saved] = existing
-      ? await tx.update(events).set(existing.status === "pending"
-        ? { ...event, externalKey, identityKey: existingIdentity, categoryId: category.id, status, verifiedAt: now, updatedAt: now }
-        : { identityKey: existingIdentity, categoryId: existing.categoryId ?? category.id, imageUrl: existing.imageUrl ?? candidate.imageUrl, sourceName: shouldUpgradeSource ? candidate.sourceName : existing.sourceName, sourceUrl: shouldUpgradeSource ? candidate.sourceUrl : existing.sourceUrl, startsAt: candidateHasExactTime ? candidate.startsAt : undefined, endsAt: candidateHasExactTime ? candidate.endsAt : undefined, timePrecision: candidateHasExactTime ? "exact" : existing.timePrecision, city: existing.city ?? candidate.city, region: existing.region ?? candidate.region, venue: existing.venue ?? candidate.venue, address: existing.address ?? candidate.address, latitude: candidateHasExactLocation ? candidate.latitude : existing.latitude, longitude: candidateHasExactLocation ? candidate.longitude : existing.longitude, locationPrecision: candidateHasExactLocation ? "exact" : existing.locationPrecision, catalogAuditVersion: 0, catalogAuditedAt: null, updatedAt: now }).where(eq(events.id, existingId)).returning({ id: events.id, status: events.status })
+      ? await tx.update(events).set(refreshExisting
+        ? { ...event, externalKey, identityKey: existingIdentity, categoryId: category.id, status, eventState: "scheduled", statusReason: null, imageUrl: existing.imageUrl ?? candidate.imageUrl, verifiedAt: now, catalogAuditVersion: 0, catalogAuditedAt: null, updatedAt: now }
+        : { identityKey: existingIdentity, categoryId: existing.categoryId ?? category.id, imageUrl: existing.imageUrl ?? candidate.imageUrl, sourceName: shouldUpgradeSource ? candidate.sourceName : existing.sourceName, sourceUrl: shouldUpgradeSource ? candidate.sourceUrl : existing.sourceUrl, startsAt: candidateHasExactTime ? candidate.startsAt : undefined, endsAt: candidateHasExactTime || candidateHasBetterEnd ? candidate.endsAt : undefined, timePrecision: candidateHasExactTime ? "exact" : existing.timePrecision, city: existing.city ?? candidate.city, region: existing.region ?? candidate.region, venue: existing.venue ?? candidate.venue, address: existing.address ?? candidate.address, latitude: candidateHasExactLocation ? candidate.latitude : existing.latitude, longitude: candidateHasExactLocation ? candidate.longitude : existing.longitude, locationPrecision: candidateHasExactLocation ? "exact" : existing.locationPrecision, catalogAuditVersion: 0, catalogAuditedAt: null, updatedAt: now }).where(eq(events.id, existingId)).returning({ id: events.id, status: events.status })
       : await tx.insert(events).values({ ...event, externalKey, identityKey, categoryId: category.id, status, eventState: "scheduled", discoveredByAi: true, verifiedAt: now }).returning({ id: events.id, status: events.status });
 
     const labels: Array<[string, string, number]> = [

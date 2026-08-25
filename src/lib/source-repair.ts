@@ -46,7 +46,7 @@ async function auditSource(event: SourceAuditEvent) {
     else await db.update(eventSources).set({ status: "invalid", isPrimary: false, lastCheckedAt: new Date() }).where(eq(eventSources.id, source.id));
   }
   if (sourceMatches) {
-    await db.update(events).set({ status: "published", statusReason: event.statusReason === invalidSourceReason ? null : event.statusReason, updatedAt: new Date() }).where(eq(events.id, event.id));
+    await db.update(events).set({ status: "published", statusReason: event.status === "expired" || event.statusReason === invalidSourceReason ? null : event.statusReason, updatedAt: new Date() }).where(eq(events.id, event.id));
     return { checked: true as const, valid: true as const, repaired: false, quarantined: false };
   }
   const replacement = validStoredSources[0];

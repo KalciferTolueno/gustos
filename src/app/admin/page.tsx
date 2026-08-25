@@ -1,11 +1,11 @@
-import { and, asc, desc, eq, gt, gte, lt, or, sql } from "drizzle-orm";
+import { asc, desc, eq, sql } from "drizzle-orm";
 import Link from "next/link";
 import { CatalogAuditControl } from "@/components/CatalogAuditControl";
 import { ModerationList } from "@/components/ModerationList";
 import { getDb } from "@/db";
 import { agentRuns, discoveryQueries, events, searchRequests } from "@/db/schema";
 import { currentUser } from "@/lib/current-user";
-import { CATALOG_AUDIT_VERSION } from "@/lib/catalog-audit";
+import { CATALOG_AUDIT_VERSION, catalogAuditCandidateCondition } from "@/lib/catalog-audit";
 
 export const dynamic = "force-dynamic";
 
@@ -15,18 +15,13 @@ export default async function AdminPage() {
   const user = await currentUser();
   if (user?.role !== "admin") return <main id="main-content" className="form-page"><div className="form-card success-card"><h1>Acceso Restringido</h1><Link href="/">Volver</Link></div></main>;
   const db = getDb();
-  const now = new Date();
   const [pending, [usage], coverage, recentRuns, recentSearches, [auditProgress]] = await Promise.all([
     db.select({ id: events.id, title: events.title, city: events.city, startsAt: events.startsAt, sourceUrl: events.sourceUrl, sourceName: events.sourceName }).from(events).where(eq(events.status, "pending")).orderBy(asc(events.startsAt)),
     db.select({ searches: sql<number>`coalesce(sum(${agentRuns.searches}), 0)`, inputTokens: sql<number>`coalesce(sum(${agentRuns.inputTokens}), 0)`, outputTokens: sql<number>`coalesce(sum(${agentRuns.outputTokens}), 0)`, cost: sql<number>`coalesce(sum(${agentRuns.estimatedCostMicros}), 0)` }).from(agentRuns),
     db.select({ category: discoveryQueries.categorySlug, region: discoveryQueries.region, status: discoveryQueries.status }).from(discoveryQueries).where(eq(discoveryQueries.kind, "coverage")),
     db.select().from(agentRuns).orderBy(desc(agentRuns.startedAt)).limit(20),
     db.select({ query: discoveryQueries.displayQuery, cacheHit: searchRequests.cacheHit, searches: searchRequests.searches, resultCount: searchRequests.resultCount, status: searchRequests.status, createdAt: searchRequests.createdAt }).from(searchRequests).leftJoin(discoveryQueries, eq(discoveryQueries.id, searchRequests.queryId)).orderBy(desc(searchRequests.createdAt)).limit(20),
-    db.select({ remaining: sql<number>`count(*)` }).from(events).where(and(
-      eq(events.status, "published"),
-      lt(events.catalogAuditVersion, CATALOG_AUDIT_VERSION),
-      or(gt(events.startsAt, now), gte(events.endsAt, now), eq(events.eventState, "postponed")),
-    )),
+    db.select({ remaining: sql<number>`count(*)` }).from(events).where(catalogAuditCandidateCondition()),
   ]);
   const coverageTotal = coverage.length;
   const coverageReady = coverage.filter((row) => row.status === "ready").length;

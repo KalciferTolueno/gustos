@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { acceptedEventState, eventHasNotEnded, eventIdentityKey, eventKey, isSpecificEventSourceUrl, normalizedSourceUrl, representativeEventTitle, sameEventOccurrence, sameSourceOccurrence } from "./events";
+import { acceptedEventState, eventDateRangesOverlap, eventHasNotEnded, eventIdentityKey, eventKey, isSpecificEventSourceUrl, normalizedSourceUrl, representativeEventTitle, sameEventOccurrence, sameEventRange, sameSourceOccurrence } from "./events";
+import { eventDateRangeLabels, formatEventSchedule } from "./event-date-format";
 import { matchesEventSearch } from "./event-search";
 import { hashPassword, verifyPassword } from "./passwords";
 import { coverageQueryDefinitions, normalizeDiscoveryQuery, queryIsFresh } from "./discovery-queries";
@@ -108,6 +109,33 @@ describe("event timing", () => {
     expect(eventHasNotEnded(new Date("2026-08-21T16:00:00Z"), new Date("2026-08-22T23:00:00Z"), now)).toBe(false);
     expect(eventHasNotEnded(new Date("2026-08-23T12:00:00Z"), null, new Date("2026-08-24T02:30:00Z"))).toBe(true);
     expect(eventHasNotEnded(new Date("2026-08-22T23:30:00Z"), null, new Date("2026-08-24T02:30:00Z"))).toBe(false);
+  });
+
+  it("formats a multi-year exhibition as a complete range", () => {
+    const exhibition = {
+      startsAt: new Date("2025-07-10T14:00:00Z"),
+      endsAt: new Date("2027-07-31T22:30:00Z"),
+      timePrecision: "exact",
+    };
+    expect(eventDateRangeLabels(exhibition)).toEqual({ start: "10 jul 2025", end: "31 jul 2027" });
+    expect(formatEventSchedule(exhibition)).toContain("10 jul 2025");
+    expect(formatEventSchedule(exhibition)).toContain("31 jul 2027");
+  });
+
+  it("matches duplicate listings inside the same published date range", () => {
+    const exhibition = {
+      title: "Roberto Matta. Abrir la mirada",
+      startsAt: new Date("2025-07-10T14:00:00Z"),
+      endsAt: new Date("2027-07-31T22:30:00Z"),
+      city: "Santiago",
+      venue: "Museo Nacional de Bellas Artes",
+      sourceUrl: "https://www.mnba.gob.cl/cartelera/roberto-matta-abrir-la-mirada",
+    };
+    const duplicate = { ...exhibition, startsAt: new Date("2026-08-24T14:00:00Z"), endsAt: null };
+    const laterOccurrence = { ...exhibition, startsAt: new Date("2028-07-10T14:00:00Z"), endsAt: null };
+    expect(eventDateRangesOverlap(exhibition, duplicate)).toBe(true);
+    expect(sameEventRange(exhibition, duplicate)).toBe(true);
+    expect(sameEventRange(exhibition, laterOccurrence)).toBe(false);
   });
 });
 

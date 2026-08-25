@@ -195,7 +195,8 @@ export async function runDiscoveryAgent(query?: string, queryId?: number, queryK
           "destinationNames contiene destinos de tours y viajes. Usa arreglos vacíos cuando no corresponda.",
           "Incluye latitude, longitude y coordinateSourceUrl únicamente si esa fuente consultada publica coordenadas exactas del recinto. Nunca uses el centro de una ciudad, comuna o región ni estimes coordenadas. En cualquier otro caso usa null en los tres campos.",
           "Usa timePrecision=exact solo cuando una fuente publique hora de inicio. Para una fecha confirmada sin hora, usa timePrecision=date, representa startsAt a las 12:00:00Z del día publicado y no inventes una hora. Usa ISO 8601 con zona horaria. Un evento confirmado por una fuente oficial puede tener confidence >= 85 aunque falte la dirección detallada.",
-          "No incluyas eventos ya finalizados, noticias, productos ni resultados sin fecha concreta. Para eventos en curso incluye endsAt.",
+          "Extrae el rango temporal completo: si una fuente publica desde/hasta, startsAt debe usar el primer día y endsAt el último. No confundas el horario diario con el rango total; para una exposición de 10:00 a 18:30 entre dos fechas, combina el primer día con 10:00 y el último con 18:30.",
+          "endsAt solo puede ser null cuando ninguna fuente consultada publica fecha de término. No incluyas eventos ya finalizados, noticias, productos ni resultados sin fecha concreta. Para eventos en curso endsAt es obligatorio.",
           queryKind === "coverage" ? "Respeta estrictamente el rango de fechas incluido en la consulta." : "",
         ].join("\n"),
       });
@@ -212,7 +213,7 @@ export async function runDiscoveryAgent(query?: string, queryId?: number, queryK
     for (const { candidate, consultedSources: candidateSources } of candidatesToSave) {
       const startsAt = new Date(candidate.startsAt);
       const endsAt = candidate.endsAt ? new Date(candidate.endsAt) : null;
-      if (!eventHasNotEnded(startsAt, endsAt) || !candidateSources.has(normalizedSourceUrl(candidate.sourceUrl, true))) continue;
+      if ((endsAt && endsAt < startsAt) || !eventHasNotEnded(startsAt, endsAt) || !candidateSources.has(normalizedSourceUrl(candidate.sourceUrl, true))) continue;
       const references = candidate.references.filter((reference) => candidateSources.has(normalizedSourceUrl(reference.url, true)));
       const possibleDirectReferences = [{ name: candidate.sourceName, url: candidate.sourceUrl }, ...references]
         .filter((reference, index, items) => isSpecificEventSourceUrl(reference.url, candidate.title)

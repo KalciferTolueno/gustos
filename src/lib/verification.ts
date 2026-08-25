@@ -76,6 +76,8 @@ async function verifyTarget(target: VerificationTarget) {
         `Verifica el estado actual del evento ${JSON.stringify(target.event.title)} anunciado para ${target.event.startsAt.toISOString()}.`,
         `Fuente conocida: ${target.source.url}`,
         "Comprueba si sigue programado, fue reprogramado o cancelado. No infieras cancelación porque una página no responda.",
+        "Extrae siempre el rango temporal completo publicado por la fuente. Si muestra una fecha desde/hasta, startsAt es el primer día y endsAt es el último día; endsAt solo puede ser null cuando la página realmente no publica término.",
+        "No confundas el horario diario con el rango total: si una exposición funciona de 10:00 a 18:30 entre dos fechas, usa la primera fecha a las 10:00 para startsAt y la última fecha a las 18:30 para endsAt.",
         "La evidencia y sourceUrl deben corresponder exactamente a la fuente conocida; no sustituyas otra página.",
         "Devuelve imageUrl solo si la fuente muestra el afiche, banner o fotografía real de este evento; nunca uses imágenes de stock o genéricas.",
         "official solo puede ser true si la evidencia viene del organizador, recinto, artista o ticketera oficial.",
@@ -100,9 +102,11 @@ async function verifyTarget(target: VerificationTarget) {
     )).orderBy(desc(eventSourceObservations.checkedAt));
     const independentCancellation = cancellationSources.some((source) => sourceDomain(source.url) !== sourceDomain(target.source.url));
     const trustedOfficial = result.official && target.source.isPrimary && Boolean(trustedSource);
+    const trustedTiming = target.source.isPrimary && result.confidence >= 85;
     const startsAt = result.startsAt ? new Date(result.startsAt) : null;
     const endsAt = result.endsAt ? new Date(result.endsAt) : null;
-    const canonicalStartsAt = startsAt && trustedOfficial ? startsAt : target.event.startsAt;
+    const canonicalStartsAt = startsAt && trustedTiming ? startsAt : target.event.startsAt;
+    if (endsAt && endsAt < canonicalStartsAt) throw new Error("Verification returned an invalid event date range");
     const canonicalVenue = result.venue && trustedOfficial ? result.venue : target.event.venue;
     const identityKey = eventIdentityKey(target.event.title, canonicalStartsAt, target.event.city, canonicalVenue);
     const externalKey = eventKey(target.event.title, canonicalStartsAt, target.event.sourceUrl, canonicalVenue, target.event.city);
@@ -124,16 +128,18 @@ async function verifyTarget(target: VerificationTarget) {
 
       if (result.confidence >= 85 && result.state !== "unknown") {
         const changes: Partial<typeof events.$inferInsert> = { verifiedAt: new Date(), updatedAt: new Date() };
-        const acceptedState = acceptedEventState(result.state, trustedOfficial, independentCancellation);
+        const acceptedState = result.state === "scheduled" && trustedTiming
+          ? "scheduled"
+          : acceptedEventState(result.state, trustedOfficial, independentCancellation);
         if (acceptedState) {
           changes.eventState = acceptedState;
           changes.statusReason = acceptedState === "scheduled" ? null : result.evidence;
         }
-        if (startsAt && trustedOfficial) changes.startsAt = startsAt;
-        if (endsAt && trustedOfficial) changes.endsAt = endsAt;
+        if (startsAt && trustedTiming) changes.startsAt = startsAt;
+        if (endsAt && trustedTiming) changes.endsAt = endsAt;
         if (result.venue && trustedOfficial) changes.venue = result.venue;
         if (!target.event.imageUrl && verifiedImageUrl) changes.imageUrl = verifiedImageUrl;
-        if (trustedOfficial) {
+        if (trustedTiming) {
           changes.identityKey = !identityCollision || identityCollision.id === target.event.id ? identityKey : null;
           if (!externalCollision || externalCollision.id === target.event.id) changes.externalKey = externalKey;
         }
