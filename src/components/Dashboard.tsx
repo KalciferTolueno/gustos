@@ -14,7 +14,6 @@ import {
   ExternalLink,
   Clock3,
   Heart,
-  Layers3,
   ListFilter,
   LoaderCircle,
   Map,
@@ -28,6 +27,7 @@ import {
 import { matchesEventSearch } from "@/lib/event-search";
 import type { EventCard } from "@/lib/events";
 import { EmailAuthForm } from "@/components/EmailAuthForm";
+import { DatitoMark } from "@/components/DatitoMark";
 import { InterestPicker, type InterestTopic } from "@/components/InterestPicker";
 import { SubmitEventForm } from "@/components/SubmitEventForm";
 import { EventImageFallback } from "@/components/EventImageFallback";
@@ -191,7 +191,7 @@ export function Dashboard({ events, demo, signedIn, isAdmin, userName, interestT
       <div className="relative mx-auto max-w-[1440px] px-4 pb-28 pt-4 sm:px-6 lg:px-8">
         <header className="glass-panel sticky top-4 z-40 flex h-16 items-center justify-between rounded-2xl px-4 sm:px-6">
           <Link href="/" className="flex items-center gap-2.5 text-lg font-medium tracking-tight text-zinc-100 no-underline">
-            <span className="grid size-9 place-items-center rounded-xl border border-white/10 bg-white/8"><Layers3 className="size-4" /></span>
+            <DatitoMark className="size-9 shrink-0" />
             Datito
           </Link>
           <nav className="hidden items-center gap-1 md:flex" aria-label="Navegación principal">
@@ -256,7 +256,7 @@ export function Dashboard({ events, demo, signedIn, isAdmin, userName, interestT
 
       <Dialog open={panel !== null} onOpenChange={(open) => { if (!open) setPanel(null); }}>
         <DialogContent className={panel === "account" ? "account-dialog max-w-xl gap-0 overflow-hidden p-0" : panel === "event" ? "max-w-3xl" : undefined}>
-          {panel === "account" && <><div className="account-dialog-header"><span className="site-brand-mark"><Layers3 aria-hidden="true" /></span><div><DialogTitle>Tu radar, a tu manera</DialogTitle><DialogDescription>Guarda tus intereses y encuentra antes los panoramas que sí son para ti.</DialogDescription></div></div><EmailAuthForm google={google} discord={discord} /></>}
+          {panel === "account" && <><div className="account-dialog-header"><DatitoMark className="size-10 shrink-0" /><div><DialogTitle>Tu radar, a tu manera</DialogTitle><DialogDescription>Guarda tus intereses y encuentra antes los panoramas que sí son para ti.</DialogDescription></div></div><EmailAuthForm google={google} discord={discord} /></>}
           {panel === "interests" && <><DialogHeader><DialogTitle>Mis intereses</DialogTitle><DialogDescription>Selecciona las señales que el radar debe priorizar para ti.</DialogDescription></DialogHeader>{signedIn ? <InterestPicker topics={interestTopics} initial={initialInterests} /> : <EmailAuthForm google={google} discord={discord} />}</>}
           {panel === "submit" && <><DialogHeader><DialogTitle>Comparte un evento</DialogTitle><DialogDescription>Incluye una fuente pública para que podamos verificarlo antes de publicar.</DialogDescription></DialogHeader>{signedIn ? <SubmitEventForm /> : <EmailAuthForm google={google} discord={discord} />}</>}
           {panel === "event" && selectedEvent && <EventDetail detail={eventDetail} fallback={selectedEvent} loading={detailLoading} />}

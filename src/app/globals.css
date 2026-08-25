@@ -54,9 +54,6 @@ button:not(:disabled), [role="button"]:not(:disabled) { cursor: pointer; }
 .ambient-two { right: -20rem; bottom: -18rem; opacity: .045; }
 .hide-scrollbar { scrollbar-width: none; }
 .hide-scrollbar::-webkit-scrollbar { display: none; }
-.site-brand-mark { position: relative; display: grid; width: 38px; height: 38px; flex: 0 0 auto; place-items: center; overflow: hidden; border: 1px solid rgba(217,255,129,.26); border-radius: 12px; color: #d9ff81; background: #1b1e18; box-shadow: inset 0 1px rgba(255,255,255,.08); }
-.site-brand-mark:after { content: ""; position: absolute; right: -6px; bottom: -6px; width: 16px; height: 16px; border: 4px solid #d9ff81; border-radius: 50%; opacity: .28; }
-.site-brand-mark svg { position: relative; z-index: 1; width: 17px; height: 17px; }
 .event-tile { animation: event-arrive 520ms var(--motion-ease) both; animation-delay: var(--entry-delay, 0ms); transition: border-color 180ms ease, box-shadow 180ms ease; }
 .event-tile:hover, .event-tile:focus-within { border-color: rgba(217,255,129,.38); box-shadow: 0 20px 42px rgba(0,0,0,.3); }
 .event-tile .event-visual > img, .event-tile .event-placeholder { transition: transform 420ms var(--motion-ease); }
