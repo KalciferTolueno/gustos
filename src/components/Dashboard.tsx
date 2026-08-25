@@ -50,6 +50,17 @@ const dateOnlyFormatter = new Intl.DateTimeFormat("es-CL", { weekday: "short", d
 const verifiedDateFormatter = new Intl.DateTimeFormat("es-CL", { dateStyle: "medium", timeStyle: "short", timeZone: chileTimeZone });
 const eventStateLabels: Record<string, string> = { scheduled: "Programado", postponed: "Postergado", cancelled: "Cancelado", completed: "Finalizado" };
 const pageSizes = [25, 50, 100] as const;
+const myTastesFilter = "Mis gustos";
+
+function interestKey(value: string) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("es-CL").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+}
+
+function eventMatchesInterest(event: EventCard, interest: InterestTopic) {
+  if (interest.type === "category") return event.categoryId === interest.id || interestKey(event.categoryName) === interest.slug;
+  return [...event.topicNames, ...event.filterNames].some((name) => interestKey(name) === interest.slug);
+}
+
 type DashboardProps = {
   events: EventCard[];
   demo: boolean;
@@ -92,15 +103,19 @@ export function Dashboard({ events, demo, signedIn, isAdmin, userName, interestT
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<(typeof pageSizes)[number]>(25);
   const deferredQuery = useDeferredValue(query.trim());
-  const topics = ["Todos", ...new Set(events.map((event) => event.categoryName))];
-  const subtopics = ["Todos", ...new Set(events.filter((event) => topic === "Todos" || event.categoryName === topic).flatMap((event) => event.filterNames).filter((name) => name !== topic))];
+  const selectedInterestTopics = interestTopics.filter((interest) => initialInterests.includes(interest.id));
+  const categoryFilters = [...(selectedInterestTopics.length ? [myTastesFilter] : []), "Todos", ...new Set(events.map((event) => event.categoryName))];
+  const categorySubtopics = events.filter((event) => topic === "Todos" || event.categoryName === topic).flatMap((event) => event.filterNames).filter((name) => name !== topic);
+  const subtopics = ["Todos", ...new Set(topic === myTastesFilter ? selectedInterestTopics.map((interest) => interest.name) : categorySubtopics)];
   const cities = ["Todo Chile", ...new Set(events.map((event) => event.city).filter((value): value is string => Boolean(value)))];
-  const filtered = events.filter((event) => (
-    (topic === "Todos" || event.categoryName === topic)
-    && (subtopic === "Todos" || event.filterNames.includes(subtopic))
-    && (city === "Todo Chile" || event.city === city)
-    && (matchesEventSearch(event, deferredQuery) || discoveredEventIds.includes(event.id))
-  ));
+  const filtered = events.filter((event) => {
+    const selectedInterest = subtopic === "Todos" ? null : selectedInterestTopics.find((interest) => interest.name === subtopic);
+    const matchesTaste = selectedInterest ? eventMatchesInterest(event, selectedInterest) : selectedInterestTopics.some((interest) => eventMatchesInterest(event, interest));
+    return (topic === "Todos" || topic === myTastesFilter ? topic !== myTastesFilter || matchesTaste : event.categoryName === topic)
+      && (topic === myTastesFilter || subtopic === "Todos" || event.filterNames.includes(subtopic))
+      && (city === "Todo Chile" || event.city === city)
+      && (matchesEventSearch(event, deferredQuery) || discoveredEventIds.includes(event.id));
+  });
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const currentPage = Math.min(page, totalPages);
   const pageStart = (currentPage - 1) * pageSize;
@@ -228,13 +243,13 @@ export function Dashboard({ events, demo, signedIn, isAdmin, userName, interestT
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:items-center">
               <div className="hide-scrollbar flex min-w-0 gap-2 overflow-x-auto pb-1">
-                {topics.map((item) => (
+                {categoryFilters.map((item) => (
                   <Button key={item} onClick={() => { setTopic(item); setSubtopic("Todos"); setPage(1); }} variant={topic === item ? "default" : "outline"} size="sm" className="min-h-11 shrink-0 rounded-full">
-                    {topic === item && <Check />} {item}
+                    {topic === item ? <Check data-icon="inline-start" /> : item === myTastesFilter ? <Heart data-icon="inline-start" /> : null} {item}
                   </Button>
                 ))}
               </div>
-              {topic !== "Todos" && subtopics.length > 1 && <Select value={subtopic} onValueChange={(value) => { setSubtopic(value); setPage(1); }}><SelectTrigger aria-label={topic === "Música" ? "Filtrar por género musical" : "Filtrar por subcategoría"} className="w-full shrink-0 rounded-full sm:w-48"><SelectValue placeholder={topic === "Música" ? "Género musical" : "Subcategoría"} /></SelectTrigger><SelectContent>{subtopics.map((item) => <SelectItem value={item} key={item}>{item}</SelectItem>)}</SelectContent></Select>}
+              {topic !== "Todos" && subtopics.length > 1 && <Select value={subtopic} onValueChange={(value) => { setSubtopic(value); setPage(1); }}><SelectTrigger aria-label={topic === myTastesFilter ? "Filtrar por mis gustos" : topic === "Música" ? "Filtrar por género musical" : "Filtrar por subcategoría"} className="w-full shrink-0 rounded-full sm:w-48"><SelectValue placeholder={topic === myTastesFilter ? "Mis gustos" : topic === "Música" ? "Género musical" : "Subcategoría"} /></SelectTrigger><SelectContent>{subtopics.map((item) => <SelectItem value={item} key={item}>{item === "Todos" && topic === myTastesFilter ? "Todos mis gustos" : item}</SelectItem>)}</SelectContent></Select>}
             </div>
             <div className="flex items-center justify-between gap-3">
               <p className="text-sm text-zinc-400" aria-live="polite">{filtered.length} resultado{filtered.length === 1 ? "" : "s"}{city !== "Todo Chile" ? ` en ${city}` : ""}</p>
@@ -254,9 +269,9 @@ export function Dashboard({ events, demo, signedIn, isAdmin, userName, interestT
       </nav>
 
       <Dialog open={panel !== null} onOpenChange={(open) => { if (!open) setPanel(null); }}>
-        <DialogContent className={panel === "account" ? "account-dialog max-w-xl gap-0 overflow-hidden p-0" : panel === "interests" ? "max-w-4xl gap-0 overflow-hidden p-6 sm:p-8" : panel === "event" ? "max-w-3xl" : undefined}>
+        <DialogContent className={panel === "account" ? "account-dialog max-w-xl gap-0 overflow-hidden p-0" : panel === "interests" ? "max-w-4xl grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-6 sm:p-8" : panel === "event" ? "max-w-3xl" : undefined}>
           {panel === "account" && <><div className="account-dialog-header"><DatitoMark className="size-10 shrink-0" /><div><DialogTitle>Tu radar, a tu manera</DialogTitle><DialogDescription>Guarda tus intereses y encuentra antes los panoramas que sí son para ti.</DialogDescription></div></div><EmailAuthForm google={google} discord={discord} /></>}
-          {panel === "interests" && <><DialogHeader className="mb-7"><DialogTitle className="text-2xl tracking-tight sm:text-3xl">Mis intereses</DialogTitle><DialogDescription className="max-w-2xl">Selecciona las señales que el radar debe priorizar para ti.</DialogDescription></DialogHeader>{signedIn ? <InterestPicker topics={interestTopics} initial={initialInterests} /> : <EmailAuthForm google={google} discord={discord} />}</>}
+          {panel === "interests" && <><DialogHeader className="mb-5"><DialogTitle className="text-2xl tracking-tight sm:text-3xl">Mis intereses</DialogTitle><DialogDescription className="max-w-2xl">Selecciona las señales que el radar debe priorizar para ti.</DialogDescription></DialogHeader>{signedIn ? <div className="-mx-6 min-h-0 overflow-y-auto px-6 sm:-mx-8 sm:px-8"><InterestPicker topics={interestTopics} initial={initialInterests} /></div> : <EmailAuthForm google={google} discord={discord} />}</>}
           {panel === "submit" && <><DialogHeader><DialogTitle>Comparte un evento</DialogTitle><DialogDescription>Incluye una fuente pública para que podamos verificarlo antes de publicar.</DialogDescription></DialogHeader>{signedIn ? <SubmitEventForm /> : <EmailAuthForm google={google} discord={discord} />}</>}
           {panel === "event" && selectedEvent && <EventDetail detail={eventDetail} fallback={selectedEvent} loading={detailLoading} />}
         </DialogContent>
