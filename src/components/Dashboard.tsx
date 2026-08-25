@@ -12,7 +12,6 @@ import {
   ChevronRight,
   Compass,
   ExternalLink,
-  Clock3,
   Heart,
   ListFilter,
   LoaderCircle,
@@ -20,6 +19,7 @@ import {
   MapPin,
   Plus,
   Search,
+  ShieldCheck,
   Sparkles,
   Ticket,
   UserRound,
@@ -59,6 +59,11 @@ function interestKey(value: string) {
 function eventMatchesInterest(event: EventCard, interest: InterestTopic) {
   if (interest.type === "category") return event.categoryId === interest.id || interestKey(event.categoryName) === interest.slug;
   return [...event.topicNames, ...event.filterNames].some((name) => interestKey(name) === interest.slug);
+}
+
+function verificationEvidence(value: string | null) {
+  if (!value) return null;
+  return value === "Discovered and verified through web search" ? "Confirmado mediante búsqueda web" : value;
 }
 
 type DashboardProps = {
@@ -269,7 +274,7 @@ export function Dashboard({ events, demo, signedIn, isAdmin, userName, interestT
       </nav>
 
       <Dialog open={panel !== null} onOpenChange={(open) => { if (!open) setPanel(null); }}>
-        <DialogContent className={panel === "account" ? "account-dialog max-w-xl gap-0 overflow-hidden p-0" : panel === "interests" ? "max-w-4xl grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-6 sm:p-8" : panel === "event" ? "max-w-3xl" : undefined}>
+        <DialogContent className={panel === "account" ? "account-dialog max-w-xl gap-0 overflow-hidden p-0" : panel === "interests" ? "max-w-4xl grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-6 sm:p-8" : panel === "event" ? "max-w-4xl gap-0 overflow-hidden p-0" : undefined}>
           {panel === "account" && <><div className="account-dialog-header"><DatitoMark className="size-10 shrink-0" /><div><DialogTitle>Tu radar, a tu manera</DialogTitle><DialogDescription>Guarda tus intereses y encuentra antes los panoramas que sí son para ti.</DialogDescription></div></div><EmailAuthForm google={google} discord={discord} /></>}
           {panel === "interests" && <><DialogHeader className="mb-5"><DialogTitle className="text-2xl tracking-tight sm:text-3xl">Mis intereses</DialogTitle><DialogDescription className="max-w-2xl">Selecciona las señales que el radar debe priorizar para ti.</DialogDescription></DialogHeader>{signedIn ? <div className="-mx-6 min-h-0 overflow-y-auto px-6 sm:-mx-8 sm:px-8"><InterestPicker topics={interestTopics} initial={initialInterests} /></div> : <EmailAuthForm google={google} discord={discord} />}</>}
           {panel === "submit" && <><DialogHeader><DialogTitle>Comparte un evento</DialogTitle><DialogDescription>Incluye una fuente pública para que podamos verificarlo antes de publicar.</DialogDescription></DialogHeader>{signedIn ? <SubmitEventForm /> : <EmailAuthForm google={google} discord={discord} />}</>}
@@ -310,41 +315,45 @@ function EventDetail({ detail, fallback, loading }: { detail: EventDetailData | 
   const event = detail ? { ...fallback, ...detail.event, topicNames: detail.topicNames, filterNames: fallback.filterNames } : fallback;
   const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
   const image = event.imageUrl && event.imageUrl !== failedImageUrl ? event.imageUrl : null;
+  const location = event.modality === "online" ? "Evento online" : [event.venue, event.address, event.city, event.region].filter(Boolean).join(" · ") || "Ubicación por confirmar";
   return (
-    <div className="space-y-5">
-      <div className="event-detail-visual relative h-56 overflow-hidden rounded-xl bg-zinc-900">
-        {image && <Image src={image} alt="" fill unoptimized sizes="(max-width: 768px) 100vw, 768px" className="z-0 object-cover" onError={() => setFailedImageUrl(image)} />}
+    <div className="event-detail-scroll max-h-[90vh] overflow-y-auto">
+      <div className="grid md:grid-cols-[minmax(18rem,.9fr)_minmax(0,1.1fr)]">
+        <div className="event-detail-visual relative min-h-64 overflow-hidden bg-zinc-900 md:min-h-[31rem]">
+        {image && <Image src={image} alt="" fill unoptimized loading="eager" sizes="(max-width: 768px) 100vw, 42vw" className="z-0 object-cover" onError={() => setFailedImageUrl(image)} />}
         {!image && <EventImageFallback categoryName={event.categoryName} />}
-        <div className="absolute inset-x-0 bottom-0 z-10 p-5">
-          <Badge variant="secondary">{eventStateLabels[event.eventState] ?? event.eventState}</Badge>
-          <DialogTitle className="mt-3 text-3xl">{event.title}</DialogTitle>
+          <Badge variant="secondary" className="absolute bottom-5 left-5 z-10">{event.categoryName}</Badge>
+        </div>
+        <div className="flex flex-col p-6 sm:p-8">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline">{eventStateLabels[event.eventState] ?? event.eventState}</Badge>
+            {event.discoveredByAi && <Badge variant="secondary"><Sparkles /> Descubierto por Datito</Badge>}
+          </div>
+          <DialogTitle className="mt-5 text-balance text-3xl font-medium tracking-[-0.03em] sm:text-4xl">{event.title}</DialogTitle>
+          <p className="mt-4 text-pretty text-sm leading-7 text-muted-foreground">{event.description}</p>
+          {event.topicNames.length > 0 && <div className="mt-5 flex flex-wrap gap-2">{event.topicNames.slice(0, 4).map((topicName) => <Badge key={topicName} variant="secondary">{topicName}</Badge>)}</div>}
+          <dl className="mt-7 divide-y divide-border border-y border-border">
+            <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-3 py-4"><span className="grid size-9 place-items-center rounded-lg bg-secondary text-secondary-foreground"><CalendarDays className="size-4" /></span><div><dt className="text-xs text-muted-foreground">Fecha y hora</dt><dd className="mt-1 text-sm font-medium leading-6">{formatEventSchedule(event)}</dd></div></div>
+            <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-3 py-4"><span className="grid size-9 place-items-center rounded-lg bg-secondary text-secondary-foreground"><MapPin className="size-4" /></span><div><dt className="text-xs text-muted-foreground">Ubicación</dt><dd className="mt-1 text-sm font-medium leading-6">{location}</dd></div></div>
+            <div className="grid grid-cols-2 gap-4 py-4"><div className="flex gap-3"><span className="grid size-9 shrink-0 place-items-center rounded-lg bg-secondary text-secondary-foreground"><Ticket className="size-4" /></span><div><dt className="text-xs text-muted-foreground">Entrada</dt><dd className="mt-1 text-sm font-medium">{event.priceLabel ?? "Por confirmar"}</dd></div></div><div className="flex gap-3"><span className="grid size-9 shrink-0 place-items-center rounded-lg bg-secondary text-secondary-foreground"><ShieldCheck className="size-4" /></span><div><dt className="text-xs text-muted-foreground">Verificación</dt><dd className="mt-1 text-sm font-medium">{event.verifiedAt ? verifiedDateFormatter.format(new Date(event.verifiedAt)) : "Pendiente"}</dd></div></div></div>
+          </dl>
+          {event.statusReason && <div className="mt-5 rounded-xl border border-amber-900 bg-amber-950 p-4 text-sm text-amber-50">{event.statusReason}</div>}
         </div>
       </div>
-      <p className="text-sm leading-7 text-zinc-300">{event.description}</p>
-      <div className="grid gap-3 rounded-xl border border-white/10 bg-white/4 p-4 text-sm text-zinc-300 sm:grid-cols-2">
-        <span className="flex gap-2"><CalendarDays className="size-4 shrink-0" />{formatEventSchedule(event)}</span>
-        <span className="flex gap-2"><MapPin className="size-4 shrink-0" />{[event.venue, event.address, event.city, event.region].filter(Boolean).join(" · ")}</span>
-        {event.priceLabel && <span className="flex gap-2"><Ticket className="size-4 shrink-0" />{event.priceLabel}</span>}
-        <span className="flex gap-2"><Clock3 className="size-4 shrink-0" />Verificado {event.verifiedAt ? verifiedDateFormatter.format(new Date(event.verifiedAt)) : "pendiente"}</span>
-      </div>
-      {event.statusReason && <div className="rounded-xl border border-amber-900 bg-amber-950 p-4 text-sm text-amber-50">{event.statusReason}</div>}
-      <section>
-        <h3 className="font-medium">Fuentes y verificaciones</h3>
-        {loading && <p className="mt-2 text-sm text-zinc-400">Cargando referencias...</p>}
-        {!loading && !detail?.sources.length && <p className="mt-2 text-sm text-zinc-400">Solo hay una referencia disponible para este evento.</p>}
-        <div className="mt-3 grid gap-3">
-          {detail?.sources.map((source) => (
-            <div key={source.id} className="rounded-xl border border-white/10 p-4">
+      <section className="border-t border-border bg-background/30 p-6 sm:p-8">
+        <div className="flex flex-wrap items-end justify-between gap-3"><div><h3 className="text-lg font-medium">Fuentes y verificaciones</h3><p className="mt-1 text-sm text-muted-foreground">Referencias utilizadas para confirmar la información del evento.</p></div>{detail?.sources.length ? <Badge variant="outline">{detail.sources.length} fuente{detail.sources.length === 1 ? "" : "s"}</Badge> : null}</div>
+        {loading && <p className="mt-5 flex items-center gap-2 text-sm text-muted-foreground"><LoaderCircle className="size-4 animate-spin" />Cargando referencias…</p>}
+        {!loading && !detail?.sources.length && <p className="mt-5 text-sm text-muted-foreground">Solo hay una referencia disponible para este evento.</p>}
+        {detail?.sources.length ? <div className="mt-5 divide-y divide-border border-y border-border">
+          {detail.sources.map((source) => (
+            <article key={source.id} className="py-4">
               <div className="flex items-center justify-between gap-3">
-                <div><b className="text-sm">{source.name}</b>{source.isPrimary && <Badge variant="secondary" className="ml-2">Principal</Badge>}</div>
-                <Button asChild variant="outline" size="sm"><a href={source.url} target="_blank" rel="noreferrer">Abrir <ExternalLink /></a></Button>
+                <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><b className="truncate text-sm">{source.name}</b>{source.isPrimary && <Badge variant="secondary">Principal</Badge>}</div>{source.observations[0] && <p className="mt-2 text-xs leading-5 text-muted-foreground"><b className="font-medium text-foreground">{eventStateLabels[source.observations[0].observedState] ?? source.observations[0].observedState}</b>{verificationEvidence(source.observations[0].evidence) ? ` · ${verificationEvidence(source.observations[0].evidence)}` : ""} · {dateOnlyFormatter.format(new Date(source.observations[0].checkedAt))}{source.observations.length > 1 ? ` · ${source.observations.length} verificaciones` : ""}</p>}</div>
+                <Button asChild variant="outline" size="sm" className="shrink-0"><a href={source.url} target="_blank" rel="noreferrer">Ver fuente <ExternalLink data-icon="inline-end" /></a></Button>
               </div>
-              <div className="mt-3 grid gap-2">
-                {source.observations.slice(0, 3).map((observation) => <p key={observation.id} className="border-l border-white/10 pl-3 text-xs leading-5 text-zinc-400"><b className="text-zinc-300">{eventStateLabels[observation.observedState] ?? observation.observedState}</b> · {observation.evidence} · {dateOnlyFormatter.format(new Date(observation.checkedAt))}</p>)}
-              </div>
-            </div>
+            </article>
           ))}
-        </div>
+        </div> : null}
       </section>
     </div>
   );
