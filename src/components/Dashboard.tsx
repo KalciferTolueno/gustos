@@ -5,6 +5,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
+// @ts-expect-error React Bits was explicitly installed in its JavaScript variant.
+import SideRays from "@/components/SideRays";
 import { startTransition, useDeferredValue, useEffect, useState, type FormEvent } from "react";
 import {
   CalendarDays,
@@ -219,9 +221,11 @@ export function Dashboard({ events, demo, signedIn, isAdmin, userName, interestT
 
   return (
     <main id="main-content" className="discovery-shell min-h-[100dvh] bg-[#0b0c0e] text-zinc-100" tabIndex={-1}>
-      <div className="ambient ambient-one" /><div className="ambient ambient-two" />
-      <div className="relative mx-auto max-w-[1440px] px-4 pb-28 pt-4 sm:px-6 lg:px-8">
-        <header className={`glass-panel top-nav z-40 flex h-16 items-center justify-between rounded-2xl px-4 sm:px-6 ${navScrolled ? "top-nav-scrolled" : ""}`}>
+      <div className="side-rays-background" aria-hidden="true">
+        <SideRays speed={2.5} rayColor1="#EAB308" rayColor2="#96c8ff" intensity={2} spread={2} origin="bottom-left" tilt={0} saturation={1.5} blend={0.75} falloff={1.6} opacity={1} />
+      </div>
+      <div className="relative z-10 mx-auto max-w-[1440px] px-4 pb-28 pt-4 sm:px-6 lg:px-8">
+        <header className={`glass-panel top-nav page-stage page-stage-nav z-40 flex h-16 items-center justify-between rounded-2xl px-4 sm:px-6 ${navScrolled ? "top-nav-scrolled" : ""}`}>
           <Link href="/" className="flex items-center gap-2.5 text-lg font-medium tracking-tight text-zinc-100 no-underline">
             <DatitoMark className="size-9 shrink-0" />
             Datito
@@ -238,7 +242,7 @@ export function Dashboard({ events, demo, signedIn, isAdmin, userName, interestT
           </div>
         </header>
 
-        <section className="hero-stage pb-8 pt-10 sm:pb-10 sm:pt-12">
+        <section className="hero-stage page-stage page-stage-hero pb-8 pt-10 sm:pb-10 sm:pt-12">
           <div className="min-w-0 max-w-5xl">
             <h1 className="max-w-4xl text-balance text-[clamp(2.75rem,6.2vw,5.8rem)] font-semibold leading-[.94] tracking-[-0.065em]">Encuentra un panorama que sí te guste</h1>
             <p className="mt-5 max-w-xl text-pretty text-base leading-7 text-zinc-400 sm:text-lg">
@@ -260,10 +264,10 @@ export function Dashboard({ events, demo, signedIn, isAdmin, userName, interestT
           </div>
         </section>
 
-        {demo && <Badge variant="outline" className="mx-auto mb-8 flex max-w-4xl whitespace-normal px-4 py-3 text-left leading-5 text-zinc-300"><Sparkles aria-hidden="true" data-icon="inline-start" /><span>Datos de demostración. Conecta PostgreSQL y OpenAI para activar el radar real.</span></Badge>}
+        {demo && <Badge variant="outline" className="page-stage page-stage-status mx-auto mb-8 flex max-w-4xl whitespace-normal px-4 py-3 text-left leading-5 text-zinc-300"><Sparkles aria-hidden="true" data-icon="inline-start" /><span>Datos de demostración. Conecta PostgreSQL y OpenAI para activar el radar real.</span></Badge>}
 
         <Tabs value={view} onValueChange={(value) => setView(value as "list" | "map")} id="eventos" className="scroll-mt-24 space-y-6">
-          <div className="filter-stage flex flex-col gap-5 rounded-2xl p-4 sm:p-5 md:flex-row md:items-start md:justify-between">
+          <div className="filter-stage page-stage page-stage-filters flex flex-col gap-5 rounded-2xl p-4 sm:p-5 md:flex-row md:items-start md:justify-between">
             <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:items-center">
               <div id="category-filters" className="flex min-w-0 flex-wrap gap-2">
                 {visibleCategoryFilters.map((item) => (

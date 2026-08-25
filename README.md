@@ -18,6 +18,12 @@ npm run dev
 
 Sin `DATABASE_URL`, la interfaz funciona con eventos ficticios claramente identificados. El agente nunca funciona sin PostgreSQL y `OPENAI_API_KEY`.
 
+## Interfaz y rendimiento percibido
+
+La portada utiliza React Bits Side Rays con OGL como fondo WebGL ambiental. La navegación, el buscador, los filtros y las tarjetas entran de forma escalonada. Las imágenes de eventos se solicitan únicamente cuando su tarjeta se acerca al viewport, se separan por intervalos dentro de cada fila y aparecen después de decodificarse. Los usuarios con `prefers-reduced-motion` reciben una versión estática sin el canvas animado ni esperas artificiales.
+
+Los archivos principales de esta experiencia son `src/components/Dashboard.tsx`, `src/components/EventTile.tsx`, `src/components/SideRays.jsx`, `src/components/SideRays.css` y `src/app/globals.css`. Las reglas visuales completas están en [`DESIGN.md`](DESIGN.md).
+
 La búsqueda de portada consulta primero PostgreSQL. Los resultados se guardan durante 24 horas; una búsqueda vacía se reintenta después de 2 minutos. Los términos solicitados al menos tres veces y activos durante la última semana se actualizan diariamente. Las consultas invitadas sin caché están limitadas por IP para controlar abuso.
 
 El worker mantiene una matriz de 20 familias temáticas en las 16 regiones y el trimestre actual más los cuatro siguientes. Separar el año en trimestres da al buscador fechas concretas y evita que una única consulta amplia deje eventos fuera, sin dejar fuera los últimos meses cuando el ciclo comienza a mitad de trimestre. El refresco se adapta a la cantidad de resultados (7, 21 o 45 días). También captura rangos completos desde/hasta, consolida duplicados por solapamiento temporal, conserva sus fuentes, verifica eventos próximos y completa imágenes oficiales mediante datos estructurados, HTML y selección de IA. Una auditoría versionada recorre todos los eventos existentes y vuelve a comprobar fuente viva, vigencia, imagen y ubicación; al incrementar la versión de reglas, el catálogo completo se revisa nuevamente sin perder el avance entre reinicios. La configuración incluida no aplica topes internos diarios ni mensuales (`0`); si se requiere controlar gasto, define límites positivos en `AGENT_*_SEARCHES_PER_*` o un límite de gasto en el proveedor.

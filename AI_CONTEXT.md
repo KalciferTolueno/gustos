@@ -18,6 +18,7 @@ No renombrar esos identificadores persistidos sin una migración y un cambio coo
 
 - Next.js 16.3 App Router, React 19 y TypeScript 6.
 - Tailwind CSS 4, Radix/Shadcn y Leaflet.
+- React Bits Side Rays sobre OGL para el fondo WebGL de la portada.
 - PostgreSQL 17, Drizzle ORM y migraciones en `drizzle/`.
 - Auth.js 5 con credenciales, Google y Discord opcionales.
 - OpenAI Responses API con búsqueda web, salida estructurada y visión.
@@ -47,6 +48,18 @@ Rutas principales:
 - `/api/admin/catalog-audit`: ejecuta manualmente el siguiente registro pendiente de la auditoría integral; requiere sesión administradora.
 
 Sin `DATABASE_URL`, la portada usa eventos de demostración. El agente requiere PostgreSQL y `OPENAI_API_KEY`.
+
+### Interfaz pública y carga visual
+
+- `src/components/Dashboard.tsx` monta `SideRays` como una capa fija detrás de la interfaz y conserva el contenido interactivo en una capa superior.
+- `src/components/SideRays.jsx` y `SideRays.css` provienen del registro `@react-bits/SideRays-JS-CSS`; `components.json` conserva el registro `@react-bits` y `ogl` es una dependencia de producción.
+- La configuración visual usa origen inferior izquierdo, velocidad `2.5`, intensidad `2`, expansión `2`, mezcla `0.75`, caída `1.6`, saturación `1.5` y colores `#EAB308`/`#96C8FF`.
+- Navegación, hero, aviso de demostración y filtros tienen una entrada escalonada mediante `transform` y `opacity`.
+- `src/components/EventTile.tsx` usa `IntersectionObserver` para revelar cada tarjeta y no monta su `Image` hasta que se acerca al viewport.
+- Las solicitudes de imágenes se separan 130 ms dentro de cada fila. Mientras cargan se muestra un lavado tonal estable; la imagen aparece después de `onLoad` con decodificación asíncrona.
+- `prefers-reduced-motion` elimina Side Rays, evita las transiciones automáticas y quita la espera artificial antes de solicitar imágenes.
+
+No convertir todas las imágenes de eventos en `eager` ni volver a montar las 25 imágenes de una página al mismo tiempo. El escalonamiento es una decisión deliberada de rendimiento percibido y debe conservarse al modificar `EventTile`.
 
 ### Worker
 

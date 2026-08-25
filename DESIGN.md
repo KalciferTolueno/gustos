@@ -2,7 +2,9 @@
 
 ## 1. Visual Theme & Atmosphere
 
-Datito is a dark editorial discovery interface for finding events in Chile. It should feel selective, fast and culturally aware. Density is balanced at 5/10, layout variance is controlled at 6/10, and motion intensity is restrained at 4/10. Photography from real events carries the atmosphere. Interface chrome uses a restrained dark liquid-glass material.
+Datito is a dark editorial discovery interface for finding events in Chile. It should feel selective, fast and culturally aware. Density is balanced at 5/10, layout variance is controlled at 6/10, and motion intensity is fluid at 6/10. Photography from real events carries the atmosphere. Interface chrome uses a restrained dark liquid-glass material.
+
+The canvas uses React Bits Side Rays as an ambient WebGL layer behind the complete discovery surface. It combines yellow (`#EAB308`) and pale blue (`#96C8FF`) rays from the lower-left corner at 86% layer opacity, while a dark veil preserves text contrast. It never intercepts input and is removed when reduced motion is requested.
 
 The product is an application, not a marketing landing page. Prioritize search, filters, event scanning and trustworthy source details over decorative storytelling.
 
@@ -33,7 +35,7 @@ The coral dot inside the existing Datito logo is part of the preserved brand mar
 - **Glass surfaces:** combine translucency, 18–26 px backdrop blur, mild saturation, a 1 px inner highlight and one consistent overhead light direction. Keep content-bearing photography opaque.
 - **Badges:** reserved for category, status or verification. They never decorate photography without adding information.
 - **Forms:** visible or assistive label, correct input type, inline status and error feedback.
-- **Loading:** shape-matched skeleton lines or compact progress motion. No generic circular spinners.
+- **Loading:** shape-matched skeleton lines or compact progress motion. Event imagery uses a tinted wash that matches the card hue until the image has loaded and decoded. No generic circular spinners.
 - **Empty states:** state the reason and provide one direct recovery action.
 
 ## 5. Layout Principles
@@ -55,7 +57,13 @@ The coral dot inside the existing Datito logo is part of the preserved brand mar
 - Motion communicates entry, feedback or state change only.
 - Animate `transform` and `opacity`; avoid layout-triggering animation.
 - Use `cubic-bezier(.16, 1, .3, 1)` for interaction easing.
+- Initial entry is staged in this order: ambient rays, navigation, hero, demonstration status, filters and event cards.
+- The WebGL background fades in over 1.65 seconds instead of appearing at full intensity on the first frame.
+- Event cards become visible through `IntersectionObserver` with a 120 px look-ahead and stagger by column.
+- Event image requests begin only after their card approaches the viewport. Requests within a row are separated by 130 ms and images fade in after decoding.
+- The first visible image may load eagerly; every following image remains lazy and all image decoding is asynchronous.
 - All automatic motion stops under `prefers-reduced-motion`.
+- Reduced-motion mode removes the WebGL layer, reveals cards immediately and skips artificial image-request delays.
 - Images may scale slightly on hover when their container clips overflow.
 
 ## 7. Anti-Patterns

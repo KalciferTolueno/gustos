@@ -1,7 +1,7 @@
 "use client";
 
 import type { CSSProperties } from "react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { CalendarDays, ExternalLink, MapPin, Ticket } from "lucide-react";
 import { formatEventSchedule } from "@/lib/event-date-format";
@@ -14,13 +14,44 @@ import { Card, CardContent, CardFooter } from "@/components/ui/card";
 const eventStateLabels: Record<string, string> = { scheduled: "Programado", postponed: "Postergado", cancelled: "Cancelado", completed: "Finalizado" };
 
 export function EventTile({ event, index, featured = false, isAdmin, onOpen }: { event: EventCard; index: number; featured?: boolean; isAdmin: boolean; onOpen?: () => void }) {
+  const tileRef = useRef<HTMLDivElement>(null);
   const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
+  const [isVisible, setIsVisible] = useState(false);
+  const [mayLoadImage, setMayLoadImage] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
   const image = event.imageUrl && event.imageUrl !== failedImageUrl ? event.imageUrl : null;
+
+  useEffect(() => {
+    const tile = tileRef.current;
+    if (!tile) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      const frame = window.requestAnimationFrame(() => setIsVisible(true));
+      return () => window.cancelAnimationFrame(frame);
+    }
+
+    const observer = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting) return;
+      setIsVisible(true);
+      observer.disconnect();
+    }, { rootMargin: "120px 0px", threshold: 0.08 });
+
+    observer.observe(tile);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!isVisible || !image) return;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const timer = window.setTimeout(() => setMayLoadImage(true), reducedMotion ? 0 : 160 + (index % 5) * 130);
+    return () => window.clearTimeout(timer);
+  }, [image, index, isVisible]);
+
   return (
-    <Card className={`event-tile relative gap-0 overflow-hidden ${onOpen ? "event-tile-openable" : ""} ${featured ? "event-tile-featured sm:col-span-2" : ""}`} style={{ "--tile-hue": `${190 + (index % 5) * 28}`, "--entry-delay": `${Math.min(index, 4) * 45}ms` } as CSSProperties}>
+    <Card ref={tileRef} className={`event-tile relative gap-0 overflow-hidden ${isVisible ? "event-tile-visible" : ""} ${onOpen ? "event-tile-openable" : ""} ${featured ? "event-tile-featured sm:col-span-2" : ""}`} style={{ "--tile-hue": `${190 + (index % 5) * 28}`, "--entry-delay": `${(index % 5) * 95}ms` } as CSSProperties}>
       {onOpen && <button type="button" className="event-card-trigger absolute inset-0 z-20 rounded-[inherit]" onClick={onOpen} aria-label={`Ver detalles de ${event.title}`} />}
       <div className={`event-visual relative overflow-hidden ${featured ? "min-h-80" : "h-64"}`}>
-        {image && <Image src={image} alt="" fill unoptimized priority={index === 0} sizes={featured ? "(max-width: 640px) 100vw, (max-width: 1280px) 66vw, 50vw" : "(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"} className="z-0 object-cover" onError={() => setFailedImageUrl(image)} />}
+        {image && !imageLoaded && <div className="event-image-skeleton" aria-hidden="true" />}
+        {image && mayLoadImage && <Image src={image} alt="" fill unoptimized loading={index === 0 ? "eager" : "lazy"} decoding="async" sizes={featured ? "(max-width: 640px) 100vw, (max-width: 1280px) 66vw, 50vw" : "(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"} className={`event-image z-0 object-cover ${imageLoaded ? "event-image-loaded" : ""}`} onLoad={() => setImageLoaded(true)} onError={() => setFailedImageUrl(image)} />}
         {!image && <EventImageFallback categoryName={event.categoryName} />}
         <Badge variant="secondary" className="pointer-events-none absolute left-4 top-4 z-10 border-white/10 bg-black/45 text-white shadow-[inset_0_1px_0_rgba(255,255,255,.12)] backdrop-blur-xl">{event.categoryName}</Badge>
         <div className="absolute inset-x-0 bottom-0 z-10 p-4">
