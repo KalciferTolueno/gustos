@@ -4,7 +4,8 @@ import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { startTransition, useDeferredValue, useState, type FormEvent } from "react";
+import { signOut } from "next-auth/react";
+import { startTransition, useDeferredValue, useEffect, useState, type FormEvent } from "react";
 import {
   CalendarDays,
   Check,
@@ -13,7 +14,7 @@ import {
   Compass,
   ExternalLink,
   Heart,
-  ListFilter,
+  LogOut,
   Map,
   MapPin,
   Plus,
@@ -37,7 +38,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
 
 const EventMap = dynamic(() => import("./EventMap").then((module) => module.EventMap), {
   ssr: false,
@@ -104,12 +105,17 @@ export function Dashboard({ events, demo, signedIn, isAdmin, userName, interestT
   const [selectedEvent, setSelectedEvent] = useState<EventCard | null>(null);
   const [eventDetail, setEventDetail] = useState<EventDetailData | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [spotlightImageFailed, setSpotlightImageFailed] = useState(false);
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
+  const [navScrolled, setNavScrolled] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<(typeof pageSizes)[number]>(25);
   const deferredQuery = useDeferredValue(query.trim());
   const selectedInterestTopics = interestTopics.filter((interest) => initialInterests.includes(interest.id));
   const categoryFilters = [...(selectedInterestTopics.length ? [myTastesFilter] : []), "Todos", ...new Set(events.map((event) => event.categoryName))];
+  const collapsedCategoryFilters = categoryFilters.slice(0, 4);
+  if (!collapsedCategoryFilters.includes(topic) && categoryFilters.includes(topic)) collapsedCategoryFilters[collapsedCategoryFilters.length - 1] = topic;
+  const visibleCategoryFilters = filtersExpanded ? categoryFilters : collapsedCategoryFilters;
+  const hiddenCategoryFilterCount = Math.max(0, categoryFilters.length - collapsedCategoryFilters.length);
   const categorySubtopics = events.filter((event) => topic === "Todos" || event.categoryName === topic).flatMap((event) => event.filterNames).filter((name) => name !== topic);
   const subtopics = ["Todos", ...new Set(topic === myTastesFilter ? selectedInterestTopics.map((interest) => interest.name) : categorySubtopics)];
   const cities = ["Todo Chile", ...new Set(events.map((event) => event.city).filter((value): value is string => Boolean(value)))];
@@ -125,7 +131,13 @@ export function Dashboard({ events, demo, signedIn, isAdmin, userName, interestT
   const currentPage = Math.min(page, totalPages);
   const pageStart = (currentPage - 1) * pageSize;
   const visibleEvents = filtered.slice(pageStart, pageStart + pageSize);
-  const spotlight = events.find((event) => event.imageUrl) ?? events[0] ?? null;
+
+  useEffect(() => {
+    const updateNavigation = () => setNavScrolled(window.scrollY > 48);
+    updateNavigation();
+    window.addEventListener("scroll", updateNavigation, { passive: true });
+    return () => window.removeEventListener("scroll", updateNavigation);
+  }, []);
 
   function resetFilters() {
     setQuery("");
@@ -206,10 +218,10 @@ export function Dashboard({ events, demo, signedIn, isAdmin, userName, interestT
   }
 
   return (
-    <main id="main-content" className="discovery-shell min-h-[100dvh] overflow-hidden bg-[#0b0c0e] text-zinc-100" tabIndex={-1}>
+    <main id="main-content" className="discovery-shell min-h-[100dvh] bg-[#0b0c0e] text-zinc-100" tabIndex={-1}>
       <div className="ambient ambient-one" /><div className="ambient ambient-two" />
       <div className="relative mx-auto max-w-[1440px] px-4 pb-28 pt-4 sm:px-6 lg:px-8">
-        <header className="glass-panel top-nav sticky top-4 z-40 flex h-16 items-center justify-between rounded-2xl px-4 sm:px-6">
+        <header className={`glass-panel top-nav z-40 flex h-16 items-center justify-between rounded-2xl px-4 sm:px-6 ${navScrolled ? "top-nav-scrolled" : ""}`}>
           <Link href="/" className="flex items-center gap-2.5 text-lg font-medium tracking-tight text-zinc-100 no-underline">
             <DatitoMark className="size-9 shrink-0" />
             Datito
@@ -220,13 +232,15 @@ export function Dashboard({ events, demo, signedIn, isAdmin, userName, interestT
             <Button variant="ghost" onClick={() => setPanel("interests")}><Heart aria-hidden="true" /> Mis intereses</Button>
             <Button variant="ghost" onClick={() => setPanel("submit")}><Plus aria-hidden="true" /> Enviar evento</Button>
           </nav>
-          <Button variant="outline" className="max-w-[115px] overflow-hidden sm:max-w-none" onClick={() => setPanel(signedIn ? "interests" : "account")}><UserRound aria-hidden="true" /> {userName ?? "Ingresar"}</Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" className="max-w-[115px] overflow-hidden sm:max-w-none" onClick={() => setPanel(signedIn ? "interests" : "account")}><UserRound aria-hidden="true" /> {userName ?? "Ingresar"}</Button>
+            {signedIn && <Button variant="outline" aria-label="Cerrar sesión" onClick={() => signOut({ callbackUrl: "/" })}><LogOut aria-hidden="true" /><span className="hidden sm:inline">Cerrar sesión</span></Button>}
+          </div>
         </header>
 
-        <section className="hero-stage grid gap-8 pb-12 pt-10 sm:pt-14 lg:grid-cols-[minmax(0,1.08fr)_minmax(21rem,.72fr)] lg:items-center lg:gap-12">
-          <div className="min-w-0">
-            <p className="text-sm font-medium text-[#d9ff81]">Eventos seleccionados en Chile</p>
-            <h1 className="mt-4 max-w-4xl text-balance text-[clamp(2.75rem,6.2vw,5.8rem)] font-semibold leading-[.94] tracking-[-0.065em]">Encuentra un panorama que sí te guste</h1>
+        <section className="hero-stage pb-8 pt-10 sm:pb-10 sm:pt-12">
+          <div className="min-w-0 max-w-5xl">
+            <h1 className="max-w-4xl text-balance text-[clamp(2.75rem,6.2vw,5.8rem)] font-semibold leading-[.94] tracking-[-0.065em]">Encuentra un panorama que sí te guste</h1>
             <p className="mt-5 max-w-xl text-pretty text-base leading-7 text-zinc-400 sm:text-lg">
               {userName ? `Hola, ${userName}. Tu radar prioriza eventos según tus intereses.` : "Busca artistas, comunidades y experiencias verificadas sin perderte entre carteleras genéricas."}
             </p>
@@ -244,34 +258,25 @@ export function Dashboard({ events, demo, signedIn, isAdmin, userName, interestT
             </form>
             {searchMessage && <p className="mt-4 text-sm text-zinc-400" role="status" aria-live="polite">{searchMessage}</p>}
           </div>
-          {spotlight && <button type="button" className="spotlight-card group text-left" onClick={() => openEvent(spotlight)} aria-label={`Ver detalles de ${spotlight.title}`}>
-            <div className="spotlight-media relative aspect-[5/4] overflow-hidden rounded-2xl bg-zinc-900">
-              {spotlight.imageUrl && !spotlightImageFailed ? <Image src={spotlight.imageUrl} alt="" fill unoptimized priority sizes="(max-width: 1024px) 100vw, 36vw" className="object-cover transition-transform duration-700 ease-[cubic-bezier(.16,1,.3,1)] group-hover:scale-[1.035]" onError={() => setSpotlightImageFailed(true)} /> : <EventImageFallback categoryName={spotlight.categoryName} />}
-            </div>
-            <span className="mt-4 flex items-start justify-between gap-5">
-              <span className="min-w-0"><span className="block text-xs font-medium text-[#d9ff81]">{spotlight.categoryName}</span><strong className="mt-1 block line-clamp-2 text-lg font-semibold leading-snug tracking-tight text-zinc-100">{spotlight.title}</strong></span>
-              <ExternalLink aria-hidden="true" className="mt-1 size-5 shrink-0 text-zinc-500 transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-[#d9ff81]" />
-            </span>
-          </button>}
         </section>
 
         {demo && <Badge variant="outline" className="mx-auto mb-8 flex max-w-4xl whitespace-normal px-4 py-3 text-left leading-5 text-zinc-300"><Sparkles aria-hidden="true" data-icon="inline-start" /><span>Datos de demostración. Conecta PostgreSQL y OpenAI para activar el radar real.</span></Badge>}
 
         <Tabs value={view} onValueChange={(value) => setView(value as "list" | "map")} id="eventos" className="scroll-mt-24 space-y-6">
-          <div className="filter-stage flex flex-col gap-5 rounded-2xl p-4 sm:p-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="filter-stage flex flex-col gap-5 rounded-2xl p-4 sm:p-5 md:flex-row md:items-start md:justify-between">
             <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:items-center">
-              <div className="hide-scrollbar flex min-w-0 gap-2 overflow-x-auto pb-1">
-                {categoryFilters.map((item) => (
+              <div id="category-filters" className="flex min-w-0 flex-wrap gap-2">
+                {visibleCategoryFilters.map((item) => (
                   <Button key={item} onClick={() => { setTopic(item); setSubtopic("Todos"); setPage(1); }} variant={topic === item ? "default" : "outline"} size="sm" className="min-h-11 shrink-0 rounded-full">
                     {topic === item ? <Check aria-hidden="true" data-icon="inline-start" /> : item === myTastesFilter ? <Heart aria-hidden="true" data-icon="inline-start" /> : null} {item}
                   </Button>
                 ))}
+                {hiddenCategoryFilterCount > 0 && <Button type="button" variant="outline" size="icon" className="size-11 shrink-0 rounded-full tabular-nums" aria-controls="category-filters" aria-expanded={filtersExpanded} aria-label={filtersExpanded ? "Mostrar menos filtros" : `Mostrar ${hiddenCategoryFilterCount} filtros más`} title={filtersExpanded ? "Mostrar menos" : "Mostrar más filtros"} onClick={() => setFiltersExpanded((expanded) => !expanded)}>{filtersExpanded ? "−" : `+${hiddenCategoryFilterCount}`}</Button>}
               </div>
               {topic !== "Todos" && subtopics.length > 1 && <Select value={subtopic} onValueChange={(value) => { setSubtopic(value); setPage(1); }}><SelectTrigger aria-label={topic === myTastesFilter ? "Filtrar por mis gustos" : topic === "Música" ? "Filtrar por género musical" : "Filtrar por subcategoría"} className="w-full shrink-0 rounded-full sm:w-48"><SelectValue placeholder={topic === myTastesFilter ? "Mis gustos" : topic === "Música" ? "Género musical" : "Subcategoría"} /></SelectTrigger><SelectContent>{subtopics.map((item) => <SelectItem value={item} key={item}>{item === "Todos" && topic === myTastesFilter ? "Todos mis gustos" : item}</SelectItem>)}</SelectContent></Select>}
             </div>
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex min-h-11 shrink-0 items-center justify-end gap-3 md:ml-auto">
               <p className="text-sm tabular-nums text-zinc-400" aria-live="polite">{filtered.length} resultado{filtered.length === 1 ? "" : "s"}{city !== "Todo Chile" ? ` en ${city}` : ""}</p>
-              <TabsList aria-label="Vista"><TabsTrigger value="list" className="min-h-11"><ListFilter aria-hidden="true" /> Lista</TabsTrigger><TabsTrigger value="map" className="min-h-11"><Map aria-hidden="true" /> Mapa</TabsTrigger></TabsList>
             </div>
           </div>
 

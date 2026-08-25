@@ -40,8 +40,12 @@ The coral dot inside the existing Datito logo is part of the preserved brand mar
 
 - Maximum content width: 1440 px.
 - Desktop navigation stays on one line and remains below 80 px tall.
-- The discovery hero uses an asymmetric text-and-event composition and fits in the initial viewport.
+- The discovery hero stays compact and contains only the title, supporting copy and search controls.
+- Desktop navigation floats above the page and remains visible throughout scrolling.
+- Once the page is scrolled, desktop navigation softens to 78% opacity and returns to full clarity on hover or keyboard focus.
+- Category filters show a compact primary set and reveal overflow choices through a `+N` control.
 - Event results use five equal columns on wide screens, three on medium screens, two on tablets and one on mobile.
+- Event cards open from the entire surface, place their category over the image and fade photography into the glass body at the lower edge.
 - Multi-column areas collapse explicitly to one column below 768 px.
 - The mobile navigation respects the bottom safe area and every action keeps a 44 px target.
 - Full-height behavior uses `100dvh`, never `100vh`.
