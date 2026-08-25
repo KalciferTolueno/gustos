@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, asc, desc, eq, gt, gte, inArray, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { getDb } from "../db";
 import { discoveryQueryEvents, eventSourceObservations, eventSources, eventTopics, events, topics, type EventRow } from "../db/schema";
 import { categoryNames, topicSlug, type CategorySlug } from "./taxonomy";
@@ -211,7 +211,37 @@ export function isSpecificEventSourceUrl(value: string, eventTitle?: string) {
 }
 
 export function eventHasNotEnded(startsAt: Date, endsAt: Date | null, now = new Date()) {
-  return (endsAt ?? startsAt) >= now;
+  return chileDateKey(endsAt ?? startsAt) >= chileDateKey(now);
+}
+
+const chileDateFormatter = new Intl.DateTimeFormat("en-CA", {
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  timeZone: "America/Santiago",
+});
+
+function chileDateKey(date: Date) {
+  const parts = Object.fromEntries(chileDateFormatter.formatToParts(date).map((part) => [part.type, part.value]));
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+export function currentOrFutureEventCondition() {
+  return sql<boolean>`(coalesce(${events.endsAt}, ${events.startsAt}) at time zone 'America/Santiago')::date >= (current_timestamp at time zone 'America/Santiago')::date`;
+}
+
+export async function expirePastEvents() {
+  const expired = await getDb().update(events).set({
+    status: "expired",
+    eventState: "completed",
+    statusReason: "Evento finalizado automáticamente al terminar su fecha en Chile.",
+    updatedAt: new Date(),
+  }).where(and(
+    inArray(events.status, ["published", "pending"]),
+    sql<boolean>`(coalesce(${events.endsAt}, ${events.startsAt}) at time zone 'America/Santiago')::date < (current_timestamp at time zone 'America/Santiago')::date`,
+  )).returning({ id: events.id });
+
+  return { expiredEvents: expired.length };
 }
 
 export function acceptedEventState(state: "scheduled" | "postponed" | "cancelled" | "unknown", official: boolean, independentlyCancelled: boolean) {
@@ -427,7 +457,6 @@ export async function listEvents(): Promise<{ events: EventCard[]; demo: boolean
   if (!process.env.DATABASE_URL) return { events: demoEvents, demo: true };
 
   const db = getDb();
-  const now = new Date();
   const categoryRows = await db.select({ id: topics.id, name: topics.name }).from(topics).where(eq(topics.type, "category"));
   const categories = new Map(categoryRows.map((category) => [category.id, category.name]));
   const rows = await db
@@ -435,7 +464,7 @@ export async function listEvents(): Promise<{ events: EventCard[]; demo: boolean
     .from(events)
     .leftJoin(eventTopics, eq(eventTopics.eventId, events.id))
     .leftJoin(topics, eq(topics.id, eventTopics.topicId))
-    .where(and(eq(events.status, "published"), or(gt(events.startsAt, now), gte(events.endsAt, now), eq(events.eventState, "postponed"))))
+    .where(and(eq(events.status, "published"), currentOrFutureEventCondition()))
     .orderBy(asc(events.startsAt));
 
   const grouped = new Map<string, EventCard>();

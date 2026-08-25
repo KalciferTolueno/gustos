@@ -2,7 +2,7 @@ import { runDiscoveryAgent } from "./lib/agent";
 import { ensureScheduledCoverage, nextDueQuery, recoverStaleQueries } from "./lib/discovery-queries";
 import { auditEventImages, backfillMissingEventImages, clearPageUrlsStoredAsImages } from "./lib/event-images";
 import { backfillExactEventLocations } from "./lib/event-locations";
-import { consolidateDuplicateEvents, promoteSpecificEventSources } from "./lib/events";
+import { consolidateDuplicateEvents, expirePastEvents, promoteSpecificEventSources } from "./lib/events";
 import { ensureCanonicalTaxonomy, type CategorySlug } from "./lib/taxonomy";
 import { repairGenericEventSources } from "./lib/source-repair";
 import { verifyNextEvent } from "./lib/verification";
@@ -31,6 +31,7 @@ async function run() {
   running = true;
   try {
     console.log(new Date().toISOString(), "starting discovery");
+    console.log(await expirePastEvents());
     await ensureCanonicalTaxonomy();
     await ensureScheduledCoverage();
     await recoverStaleQueries();

@@ -157,6 +157,8 @@ No usar imágenes de stock, genéricas ni de otros eventos. `src/lib/event-image
 
 El worker ejecuta el backfill después de la verificación para no retrasar comprobaciones temporales. Aprobar un evento desde `/admin` también llama `ensureEventImage()`; un fallo de imagen se registra pero no revierte una aprobación ya guardada.
 
+Al iniciar cada ciclo, el worker marca como `expired` y `completed` los eventos publicados o pendientes cuya última fecha terminó antes de hoy en `America/Santiago`. La consulta pública y el detalle aplican además el mismo límite directamente en PostgreSQL: un evento de hoy permanece visible todo el día, un evento de varios días permanece hasta su fecha final y ninguno depende de que el worker ya haya alcanzado a limpiarlo.
+
 ## Auditoría completa del catálogo
 
 `src/lib/catalog-audit.ts` recorre uno por uno todos los eventos publicados, actuales o futuros. Cada registro pasa por validación de la página viva, verificación temporal, selección visual y ubicación. `events.catalog_audit_version` y `catalog_audited_at` forman un cursor persistente: los reinicios continúan donde quedó el worker y los fallos se reintentan sin bloquear el resto del catálogo. Una fuente incorrecta pone el evento en pendiente inmediatamente; una imagen dudosa se elimina; las coordenadas solo sobreviven si son exactas y están en Chile.

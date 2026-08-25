@@ -102,10 +102,12 @@ describe("agent telemetry", () => {
 });
 
 describe("event timing", () => {
-  it("keeps an event visible while its end date is still in the future", () => {
+  it("keeps today's events visible until the Chilean calendar day ends", () => {
     const now = new Date("2026-08-23T16:00:00Z");
     expect(eventHasNotEnded(new Date("2026-08-21T16:00:00Z"), new Date("2026-08-23T23:00:00Z"), now)).toBe(true);
     expect(eventHasNotEnded(new Date("2026-08-21T16:00:00Z"), new Date("2026-08-22T23:00:00Z"), now)).toBe(false);
+    expect(eventHasNotEnded(new Date("2026-08-23T12:00:00Z"), null, new Date("2026-08-24T02:30:00Z"))).toBe(true);
+    expect(eventHasNotEnded(new Date("2026-08-22T23:30:00Z"), null, new Date("2026-08-24T02:30:00Z"))).toBe(false);
   });
 });
 

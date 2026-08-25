@@ -45,7 +45,7 @@ const EventMap = dynamic(() => import("./EventMap").then((module) => module.Even
 });
 
 const chileTimeZone = "America/Santiago";
-const dateFormatter = new Intl.DateTimeFormat("es-CL", { day: "numeric", month: "short", timeZone: chileTimeZone });
+const dateFormatter = new Intl.DateTimeFormat("es-CL", { day: "numeric", month: "short", year: "numeric", timeZone: chileTimeZone });
 const fullDateFormatter = new Intl.DateTimeFormat("es-CL", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: chileTimeZone });
 const dateOnlyFormatter = new Intl.DateTimeFormat("es-CL", { weekday: "short", day: "numeric", month: "short", timeZone: chileTimeZone });
 const verifiedDateFormatter = new Intl.DateTimeFormat("es-CL", { dateStyle: "medium", timeStyle: "short", timeZone: chileTimeZone });

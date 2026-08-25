@@ -6,7 +6,7 @@ import { eventSourceObservations, eventSources, eventTopics, events, topics } fr
 import { currentUser } from "@/lib/current-user";
 import { ensureEventImage } from "@/lib/event-images";
 import { eventSourceContainsEvent } from "@/lib/event-source-validation";
-import { isSpecificEventSourceUrl } from "@/lib/events";
+import { currentOrFutureEventCondition, isSpecificEventSourceUrl } from "@/lib/events";
 
 const actionSchema = z.object({ action: z.enum(["approve", "reject"]) });
 
@@ -14,7 +14,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   if (!process.env.DATABASE_URL) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const { id } = await params;
   const db = getDb();
-  const [event] = await db.select().from(events).where(and(eq(events.id, id), eq(events.status, "published"))).limit(1);
+  const [event] = await db.select().from(events).where(and(eq(events.id, id), eq(events.status, "published"), currentOrFutureEventCondition())).limit(1);
   if (!event) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const [topicRows, sourceRows] = await Promise.all([
     db.select({ name: topics.name }).from(eventTopics).innerJoin(topics, eq(topics.id, eventTopics.topicId)).where(eq(eventTopics.eventId, id)),
