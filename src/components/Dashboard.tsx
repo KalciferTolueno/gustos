@@ -254,9 +254,9 @@ export function Dashboard({ events, demo, signedIn, isAdmin, userName, interestT
       </nav>
 
       <Dialog open={panel !== null} onOpenChange={(open) => { if (!open) setPanel(null); }}>
-        <DialogContent className={panel === "account" ? "account-dialog max-w-xl gap-0 overflow-hidden p-0" : panel === "event" ? "max-w-3xl" : undefined}>
+        <DialogContent className={panel === "account" ? "account-dialog max-w-xl gap-0 overflow-hidden p-0" : panel === "interests" ? "max-w-4xl gap-0 overflow-hidden p-6 sm:p-8" : panel === "event" ? "max-w-3xl" : undefined}>
           {panel === "account" && <><div className="account-dialog-header"><DatitoMark className="size-10 shrink-0" /><div><DialogTitle>Tu radar, a tu manera</DialogTitle><DialogDescription>Guarda tus intereses y encuentra antes los panoramas que sí son para ti.</DialogDescription></div></div><EmailAuthForm google={google} discord={discord} /></>}
-          {panel === "interests" && <><DialogHeader><DialogTitle>Mis intereses</DialogTitle><DialogDescription>Selecciona las señales que el radar debe priorizar para ti.</DialogDescription></DialogHeader>{signedIn ? <InterestPicker topics={interestTopics} initial={initialInterests} /> : <EmailAuthForm google={google} discord={discord} />}</>}
+          {panel === "interests" && <><DialogHeader className="mb-7"><DialogTitle className="text-2xl tracking-tight sm:text-3xl">Mis intereses</DialogTitle><DialogDescription className="max-w-2xl">Selecciona las señales que el radar debe priorizar para ti.</DialogDescription></DialogHeader>{signedIn ? <InterestPicker topics={interestTopics} initial={initialInterests} /> : <EmailAuthForm google={google} discord={discord} />}</>}
           {panel === "submit" && <><DialogHeader><DialogTitle>Comparte un evento</DialogTitle><DialogDescription>Incluye una fuente pública para que podamos verificarlo antes de publicar.</DialogDescription></DialogHeader>{signedIn ? <SubmitEventForm /> : <EmailAuthForm google={google} discord={discord} />}</>}
           {panel === "event" && selectedEvent && <EventDetail detail={eventDetail} fallback={selectedEvent} loading={detailLoading} />}
         </DialogContent>
